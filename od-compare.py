@@ -8,13 +8,16 @@ The first column in the output is a status field defined as follows:
 0: record only found in catalog-info.csv
 1: record in open data catalog but not catalog-info.csv or DDH (catalog-info.csv is out of date)
 2: record in open data catalog and catalog-info.csv but not DDH
+3: DDH API threw an error
 10: record in catalog-info.csv and DDH but not open data catalog
 12: record in all 3 sources
 
 Usage:
-  od-compare.py [--infofile=FILE]
+  od-compare.py [--all --status] [--infofile=FILE]
 
 Options:
+  --all, -a            report all records (else just report records with discrepancies)
+  --status             report running status to stderr
   --infofile=FILE      name of CSV dataset info file, as written by od-catalog-info.py [default: catalog-info.csv]
 
 """
@@ -68,20 +71,26 @@ for dataset in dc:
   store[dataset['id']]['odcat'] = meta
 
 # now go get metadata from DDH
+total = len(store)
+i = 0
 for key,row in store.iteritems():
+  i += 1
   if row.get('uuid') is None or row['uuid'] == 'NA':
     # no DDH uuid in the info file
     store[key]['ddhcat'] = {'name': 'n/a'}
     continue
 
   url = ddh_root + '/api/3/action/package_show?id=' + row['uuid']
-  sys.stderr.write('Fetching: ' + url + '\n')
+  msg = '[%d/%d] Fetching %s (%s)' % (i, total, row['ddh_path'], row['uuid'])
+  if config['--status'] is True:
+    sys.stderr.write(msg + '\n')
 
   response = requests.get(url)
   ddh = response.json()['result']
   if type(ddh) is dict:
     # DKAN returns a list if successful, and a dict on error
     store[key]['ddhcat'] = {'name': 'API ERROR: ' + ddh.get('error')}
+    store[key]['status'] = 3
     continue
 
   # else, this will be a 1-element list
@@ -99,13 +108,26 @@ for key,row in store.iteritems():
 
 # everything loaded - iterate and write report
 writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL)
-writer.writerow(['STATUS','DCS_ID', 'DDH_UUID', 'DCS_TITLE', 'DDH_TITLE', 'DCS_LASTUPDATED', 'DDH_LASTUPDATED', 'DATE_MATCH'])
+hdr = False
 
 for key, row in store.iteritems():
   od_name = row['odcat'].get('name') or ''
   ddh_name = row['ddhcat'].get('name') or ''
 
-  date_match = type(row['odcat'].get('_last_updated')) is datetime.date and type(row['ddhcat'].get('_last_updated')) is datetime.date and row['odcat']['_last_updated'] == row['ddhcat']['_last_updated']
+  if row['odcat'].get('lastrevisiondate') == 'Current':
+    date_match = not row['ddhcat'].get('last_updated')
+  else:
+    date_match = type(row['odcat'].get('_last_updated')) is datetime.date and type(row['ddhcat'].get('_last_updated')) is datetime.date and row['odcat']['_last_updated'] == row['ddhcat']['_last_updated']
+
+  row_status = row.get('status')
+  is_anomaly = (date_match is False and row_status == 12) or row_status in [0, 1, 10, 11]
+  if is_anomaly is False and config['--all'] is False:
+    continue
+
+  if hdr is False:
+    writer.writerow(['STATUS','DCS_ID', 'DDH_UUID', 'DCS_TITLE', 'DDH_TITLE', 'DCS_LASTUPDATED', 'DDH_LASTUPDATED', 'DATE_MATCH'])
+    hdr = True
+
   report = [row.get('status'), key, row.get('uuid'),
     od_name.encode('utf-8'), ddh_name.encode('utf-8'),
     row['odcat'].get('lastrevisiondate'), row['ddhcat'].get('last_updated'), date_match]
