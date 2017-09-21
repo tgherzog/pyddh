@@ -1,4 +1,4 @@
-#!/usr/bin/python -B -u
+#!/usr/bin/python -u
 
 """
 This script is used to maintain links between the open data catalog and DDH.
@@ -25,12 +25,16 @@ Options:
 """
 
 from docopt import docopt
-from open_datasets import open_datasets
 import requests
 import re
 import sys
 import csv
 from pyquery import PyQuery
+
+# prevent ugly pyc files
+sys.dont_write_bytecode = True
+
+from open_datasets import open_datasets
 
 config = docopt(__doc__, version='version ' + '0.1')
 

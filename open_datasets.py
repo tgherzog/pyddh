@@ -153,5 +153,8 @@ open_datasets = [
 {'od_id': 162, 'ddh_path': 'world-bank-contract-awards'},
 {'od_id': 163, 'ddh_path': 'g20-financial-inclusion-indicators'},
 {'od_id': 164, 'ddh_path': 'commodity-prices-history-and-projections'},
-{'od_id': 165, 'ddh_path': 'wdi-database-archives'}]
+{'od_id': 165, 'ddh_path': 'wdi-database-archives'},
+{'od_id': 166, 'ddh_path': ''},
+{'od_id': 167, 'ddh_path': 'getting-back-track-reviving-growth-and-securing-prosperity-all-thailand-systematic-country'},
+]
 

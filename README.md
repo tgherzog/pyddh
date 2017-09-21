@@ -14,28 +14,3 @@ Obtains the nid and uuid for each DCS dataset's counterpart in DDH, through a co
 
 Compares metadata from DCS and DDH to identify inconsistencies
 
-
-### DKAN Taxonomy Dictionary
-
-Useful information for using the DKAN endpoints as well as `/search-service/search_api/datasets`
-
-Field                 | Key                       | Taxonomy Term       | tid
---------------------- | ------------------------- | ------------------- | ---
-Data Type             | field_wbddh_data_type     | Time Series         | 293
-                      |                           | Microdata           | 294
-                      |                           | Geospatial          | 295
-                      |                           | Other               | 853
-Data Classification   | field_wbddh_data_class    | Public              | 358
-                      |                           | Official Use Only   | 359
-                      |                           | Confidential        | 360
-Terms of Use          | field_wbddh_terms_of_use  | Open Data Access    | 434
-                      |                           | Direct Access       | 435
-                      |                           | External Repository | 438
-                      |                           | ESRI Credits        | 442
-                      |                           | Licensed            | 437
-                      |                           | No access           | 439
-                      |                           | Public use          | 436
-                      |                           | Restricted          | 441
-                      |                           | Not specified       | 876
-Contact Details       | field_contact_email       | n/a (text)          |
-
