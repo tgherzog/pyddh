@@ -70,16 +70,9 @@ def get_keywords(field, tid):
 def load(host):
     global ddh_terms
 
-    host = 'newdatacatalog.worldbank.org'
     ddh_terms = {}
     response = requests.get('https://{}/internal/listvalues'.format(host))
     api_data = response.json()
-
-    # granularity is missing from the API so for now we have to define it locally
-    d,f = os.path.split(__file__)
-    with open(os.path.join(d, 'granularity.json'), 'r') as fd:
-        data2 = json.load(fd)
-        api_data.extend(data2)
 
     for elem in api_data:
         # Fix incorrect information in the API

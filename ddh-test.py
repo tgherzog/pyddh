@@ -4,38 +4,75 @@
 Conduct DDH API tests
 
 Usage:
-    ddh-test.py dataset [--source=FILE] [--resource=ID]
+    ddh-test.py dataset --json=FILE [--resource=ID]
     ddh-test.py update ID RESOURCE
-    ddh-test.py resource [--dataset=ID] [--title=TITLE]
-    ddh-test.py attach ID FILE
+    ddh-test.py resource --json=FILE [--dataset=ID] [--title=TITLE]
+    ddh-test.py attach --resource=ID FILE
     ddh-test.py get ID
+    ddh-test.py put --json=FILE ID
     ddh-test.py token
 """
 
 import requests
 import json
+import os
 import sys
+import yaml
 from docopt import docopt
 
 config = docopt(__doc__)
 
-session_key = 'SSESSf70b342115438dbd206e1df9422509d2'
-session_val = 'bZun_9ai3ag0KP-eIV24cr9LfzNnTqkSSzxupkPA2KE'
+session_key = ''
+session_val = ''
+session_token = ''
 
-host = 'datacatalogbetastg.worldbank.org'
+host = 'newdatacatalogstg.worldbank.org'
 uid  = '19764' # becomes both the node's uid and the TTL
 
+def login(host, user=None, pswd=None):
+    global ddh_host, session_key, session_val, session_token
+
+    if not user or not pswd:
+        try:
+            path = os.path.join(os.getcwd(), 'config.yaml')
+            with open(path, 'r') as fd:
+                try:
+                    config = yaml.load(fd)
+                    user = config[host]['user']
+                    pswd = config[host]['password']
+                except:
+                    raise InitError('Incorrect yaml file format in {}'.format(path))
+        except:
+            sys.stderr.write('user/password not specified, and config.yaml not found\n')
+
+    body = {'username': user, 'password': pswd}
+    url = 'https://{}/api/dataset/user/login'.format(host)
+
+    response = requests.post(url, json=body)
+    json = response.json()
+    if type(json) is not dict:
+        sys.stderr.write('login access denied\n')
+
+    session_key = json['session_name']
+    session_val = json['sessid']
+    session_token = json['token']
+
 def get_token():
-    global host, session_key, session_val
+    global host, session_key, session_val, session_token
+
+    return session_token
+
     url = 'https://{}/{}'.format(host, 'services/session/token')
     response = requests.post(url, cookies={session_key: session_val})
     return response.text
 
 data_source = None
-if config.get('--source'):
-    with open(config['--source'], 'r') as src:
+if config.get('--json'):
+    with open(config['--json'], 'r') as src:
         data_source = json.load(src)
         
+login(host)
+
 if config['token']:
     print get_token()
 
@@ -55,51 +92,7 @@ elif config['dataset']:
     endpoint = 'api/dataset/node'
     token = get_token()
     url = 'https://{}/{}'.format(host, endpoint)
-    dataset = {
-      'type': 'dataset',
-      'title': 'API test dataset with upload',
-      # 'uid': uid,
-      'body': {'und':[{ 'value': 'Description of an API test dataset', }]},
-      # 'field_wbddh_data_type': {'und': ['853']},              # other
-      # 'field_wbddh_data_type': {'und': ['294']},              # microdata
-      'field_wbddh_data_type': {'und': {'tid': '294'}},              # microdata
-      # 'field_wbddh_country': {'und':['874']},            # not specified
-      'field_wbddh_country': {'und':['254']},            # not specified
-      # 'field_wbddh_dsttl_upi': { 'und': {'autocomplete_hidden_value': uid} },
-      # 'field_topic': {'und':['366']},                    # energy & extractives
-      # TEST
-      'field_topic': {'und': {'tid': '366'}},                    # energy & extractives
-      # 'field_wbddh_languages_supported': {'und':['873']},   # other
-      # TEST
-      'field_wbddh_languages_supported': {'und': {'tid': '873'}},   # other
-      # 'field_wbddh_data_class': {'und':['358']},          # open data
-      'field_wbddh_data_class': {'und': {'tid': '358'}},          # open data
-      # 'field_wbddh_terms_of_use': {'und':['434']},          # open data
-      'field_wbddh_terms_of_use': {'und': {'tid': '434'}},          # open data
-      # 'field_granularity_list': {'und':['946']},          # unspecified
-      # TEST (add)
-      'field_granularity_list': {'und': {'tid': '946'}},          # unspecified
-      # 'field_frequency': {'und':['18']},          # unspecified
-      # TEST (add)
-      'field_frequency': {'und': {'tid': '18'}},          # unspecified
-      # 'field_wbddh_economy_coverage': {'und':['1318']},          # unspecified - might be different in staging and production
-      # TEST (add)
-      # 'field_wbddh_economy_coverage': {'und': {'tid': '1318'}},          # unspecified - might be different in staging and production
-      # 'og_group_ref': {'und': {'target_id': '102732'}},
-      # 'field_wbddh_start_date': {'und': [{'value': '2008-06-10'}]},
-      # 'field_wbddh_end_date': {'und': [{'value': '2008-06-30'}]},
-      # 'field_wbddh_release_date': {'und': [{'value': '2016-11-16 22:30:52', 'date_type': 'datetime', 'timezone': 'America/New_York', 'timezone_db': 'America/New_York' }]},
-      'field_wbddh_modified_date': {'und': [{'value': '2016-11-16 22:30:52' }]},
-      # 'field_wbddh_start_date': {'und': [{'value': '2016-03-01 10:00:00' }]},
-      # 'field_wbddh_end_date': {'und': [{'value': '2016-03-15 10:30:00' }]},
-      # 'field_wbddh_period_start_date': {'und': [{'value': '2016-04-01 11:00:00' }]},
-      # 'field_wbddh_period_end_date': {'und': [{'value': '2016-04-15 11:30:00' }]},
-
-      # 'field_ddh_harvest_sys_id': {'und': [{ 'value': '1234abcd'}]},
-    }
-
-    if data_source is not None:
-        dataset = data_source
+    dataset = data_source
 
     if config['--resource'] is not None:
         dataset['field_resources'] = {'und': [{'target_id': 'API test resource with upload ({})'.format(config['--resource'])}]}
@@ -135,8 +128,13 @@ elif config['resource']:
         # 'field_link_api': {'und': [{'url': 'http://cait.wri.org'}]},
     }
 
+    dataset = data_source
+
     if config['--dataset'] is not None:
         dataset['field_dataset_ref'] = {'und': {'target_id': config['--dataset']}}
+
+    if config['--title'] is not None:
+        dataset['title'] = config['--title']
 
     response = requests.post(url, cookies={session_key: session_val}, headers={'X-CSRF-Token': token, 'Content-Type': 'application/json'}, json=dataset)
     try:
@@ -147,6 +145,28 @@ elif config['resource']:
 
     print 'SUBMITTED DATASET'
     print json.dumps(dataset, indent=4)
+    print 'REQUEST HEADERS'
+    print response.request.headers
+    print 'RESPONSE HEADERS'
+    print response.headers
+    print 'RESPONSE'
+    print t_response
+
+elif config['put']:
+    endpoint = 'api/dataset/node'
+    token = get_token()
+    url = 'https://{}/{}/{}'.format(host, endpoint, config['ID'])
+
+    print "PUT to {}".format(url)
+    response = requests.put(url, cookies={session_key: session_val}, headers={'X-CSRF-Token': token, 'Content-Type': 'application/json'}, json=data_source)
+    try:
+        data = response.json()
+        t_response = json.dumps(data, indent=4)
+    except:
+        t_response = response.text
+
+    print 'SUBMITTED DATASET'
+    print response.request.body
     print 'REQUEST HEADERS'
     print response.request.headers
     print 'RESPONSE HEADERS'
@@ -187,7 +207,7 @@ elif config['update']:
 
 elif config['attach']:
     token = get_token()
-    url = 'https://{}/api/dataset/node/{}/attach_file'.format(host, config['ID'])
+    url = 'https://{}/api/dataset/node/{}/attach_file'.format(host, config['--resource'])
 
     post_info = {'files[1]': open(config['FILE'], 'rb'), 'field_name': (None,'field_upload'), 'attach': (None,'1')}
     response = requests.post(url, cookies={session_key: session_val}, headers={'X-CSRF-Token': token}, files=post_info)
