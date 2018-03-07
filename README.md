@@ -1,13 +1,16 @@
 
 
-### ddh_fix.py
+### ddh-fix.py
 
 Minor script that demonstrates how to make batch updates to specified DDH records
 
-### eex_harvest.py
+### ddh-test.py
 
-Slight misnomer here. This is a bespoke script intended to do a one-time export/import from energydata.info
-to DDH.
+Low-level module-independent tests for the DDH API
+
+### eex-transfer.py
+
+This is a bespoke script intended to do a one-time export/import from energydata.info to DDH.
 
 ### open_datasets.py
 
