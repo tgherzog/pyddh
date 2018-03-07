@@ -37,7 +37,7 @@ with open(config['--infofile'], 'r') as csvref:
   for row in reader:
     store[row[0]] = {'ddh_path': row[1], 'nid': row[2], 'uuid': row[3], 'status': 0, 'odcat': {}}
   
-ddh_root = 'https://newdatacatalog.worldbank.org'
+ddh_root = 'https://datacatalog.worldbank.org'
 api_root = 'http://api.worldbank.org/v2'
 
 url = api_root + '/datacatalog?per_page=1000&format=json'
