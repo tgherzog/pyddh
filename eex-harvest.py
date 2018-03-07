@@ -36,6 +36,12 @@ extension_map = {
   '.tif': '.tiff',
 }
 
+formats_map = {
+  'shp': 'SHP ZIP',
+  'shapefiles': 'SHP ZIP',
+  'xlsx': 'Excel',
+}
+
 # this list is taken from the Drupal admin interface
 supported_extensions = [
 'csv', 'html', 'xls', 'json', 'xlsx', 'doc', 'docx', 'rdf', 'txt', 'jpg',
@@ -49,14 +55,21 @@ import ddh
 
 config = docopt(__doc__)
 
+# options that could possibly be platform specific
+config.update({
+  'group_ref': 124846, # or None if datasets are not assigned to a collection
+  'ttl': 47197,    # Yann Tanvez (21812)
+  'collab': 47172, # Jemire (Jemi) Lacle (23715)
+})
+
 host     = 'https://energydata.info'
 target   = 'newdatacatalogstg.worldbank.org'
-group_ref = 124846 # need to confirm the node ID reference for the dataset group
 api_base = '{}/api/3/action'.format(host)
 time_fmt = '%Y-%m-%dT%H:%M:%S'
 
 try:
     ddh.load(target)
+    ddh.taxonomy.set_default('field_format', 'Other')
     # ddh.dataset.debug = True
 except ddh.dataset.InitError as err:
     sys.stderr.write(err.message + '\n')
@@ -79,7 +92,7 @@ elif config['--from']:
     # use specified package list in lieu of the site's package list
     # presumably, this is based on output from --summary mode
     with open(config['--from'], 'r') as fd:
-        src_package_list = [s.strip() for s in fd.readlines() if len(s.strip()) > 0 and s[0] != '#']
+        src_package_list = [s.strip(',\n') for s in fd.readlines() if len(s.strip(',\n')) > 0 and s[0] != '#']
 else:
     response = requests.get('{}/package_list'.format(api_base))
     src_package_list = response.json()['result']
@@ -99,7 +112,7 @@ for id in src_package_list:
         sys.stderr.write('ERROR: ' + id + '\n')
     elif pkg['success'] and info.get('organization') and info['organization']['title'] == 'World Bank Group':
         if config['--summary']:
-            print id
+            print '{},{}'.format(id, len(info.get('resources', [])))
             continue
 
         print 'Processing {} ({})'.format(info['name'], info['id'])
@@ -157,23 +170,26 @@ for id in src_package_list:
             else:
                 print 'Warning: unrecognized country/region code {} in {} ({})'.format(elem, info['name'], info['id'])
 
-        # We stuff a bunch of miscellanous information into the keywords field expressed as a yaml object
+        # We stuff a bunch of miscellanous information into the external_metadata field expressed as a yaml object
         # including for the moment, the external dataset identifier
-        keywords = {'id': 'energydata.info'}
+        external_metadata = {'id': 'energydata.info'}
 
         if info.get('group'):
-            keywords['group']  = info['group']
+            external_metadata['group']  = info['group']
 
         if info.get('topic'):
-            keywords['topic'] = info['topic']
+            external_metadata['topic'] = info['topic']
+
+        if info.get('release_date'):
+            external_metadata['publish_date'] = info['release_date']
 
         # initialize dataset with values that are constant for this platform
         ds = ddh.dataset.ds_template()
         ds.update({
-            'field_wbddh_dsttl_upi': '21812', # Yann Tanvez
-            'field_wbddh_collaborator_upi': '23715', # Jemire (Jemi) Lacle
-            'og_group_ref': group_ref,
-            'field_wbddh_search_tags': yaml.safe_dump(keywords, default_flow_style=False),
+            'field_wbddh_dsttl_upi': config['ttl'],
+            'field_wbddh_collaborator_upi': config['collab'],
+            'og_group_ref': config['group_ref'],
+            'field_external_metadata': yaml.safe_dump(external_metadata, default_flow_style=False),
         })
 
         ddh.taxonomy.update(ds, {
@@ -212,10 +228,11 @@ for id in src_package_list:
         # Same thing for resources
         for r in info.get('resources', []):
           rs = ddh.dataset.rs_template()
+          format = formats_map.get(r['format'].lower(), r['format'])
           rs.update({
             'title': r['name'],
             'body': r['description'],
-            'field_format': ddh.taxonomy.get('field_format', r['format'], ddh.taxonomy.get('field_format', 'Other')),
+            'field_format': ddh.taxonomy.get('field_format', format, True),
           })
 
           ddh.taxonomy.update(rs, {
