@@ -117,12 +117,12 @@ def _set_values(d, elem):
         if v is None:
             continue
 
-        if taxonomy.is_tax(k) and k != 'workflow_status':
+        if k != 'workflow_status' and taxonomy.is_tax(k):
             if type(v) is list:
                 d[k] = {'und': v}
             else:
                 d[k] = {'und': [v]}
-        elif k in ['body', 'field_wbddh_source', 'field_wbddh_publisher_name', 'field_wbddh_search_tags', 'field_ddh_external_contact_email', 'field_wbddh_depositor_notes', 'field_ddh_harvest_sys_id', 'field_wbddh_reference_system']:
+        elif k in ['body', 'field_wbddh_copyright', 'field_wbddh_type_of_license', 'field_wbddh_source', 'field_wbddh_publisher_name', 'field_wbddh_search_tags', 'field_ddh_external_contact_email', 'field_wbddh_depositor_notes', 'field_ddh_harvest_sys_id', 'field_wbddh_reference_system', 'field_related_links_and_publicat', 'field_external_metadata']:
             if type(v) is str or type(v) is unicode:
                 d[k] = {'und': [{'value': v}]}
             else:
@@ -155,8 +155,6 @@ def _set_values(d, elem):
             d[k] = {'und': [{ 'value': v.strftime('%Y-%m-%d %H:%M:%S'), 'value2': v.strftime('%Y-%m-%d %H:%M:%S') }]}
         elif k in ['og_group_ref']:
             d[k] = {'und': {'target_id': v}}
-        elif k in ['field_related_links_and_publicat']:
-            d[k] = {'und': [{'value': v}]}
         else:
             d[k] = v
 
@@ -208,6 +206,7 @@ def new_dataset(ds, id=None):
             del e['upload']
 
         obj = new_object(e)
+        obj['field_resource_weight'] = {'und': [{'value': len(resource_references)}]}
 
         url = 'https://{}/api/dataset/node'.format(ddh_host)
         debug_report('Resource Create - {}'.format(url), obj)
@@ -236,7 +235,7 @@ def new_dataset(ds, id=None):
     if len(resource_references) > 0 and rsrc_approach == 'concurrent':
         obj['field_resources'] = {'und': []}
         for elem in resource_references:
-            obj['field_resources']['und'].append({'target_id': '{} ({})'.format(elem['title'], elem['nid'])})
+            obj['field_resources']['und'].append({'target_id': u'{} ({})'.format(elem['title'], elem['nid'])})
 
     debug_report('Dataset Create - {}'.format(url), obj)
     response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
@@ -253,7 +252,7 @@ def new_dataset(ds, id=None):
           'field_resources': {'und': []}
         }
         for elem in resource_references:
-            obj['field_resources']['und'].append({'target_id': '{} ({})'.format(elem['title'], elem['nid'])})
+            obj['field_resources']['und'].append({'target_id': u'{} ({})'.format(elem['title'], elem['nid'])})
 
         url = 'https://{}/api/dataset/node/{}'.format(ddh_host, dataset_node)
         debug_report('Resource Attach - {} (multiple)'.format(url), obj)
@@ -271,7 +270,7 @@ def new_dataset(ds, id=None):
           'field_resources': {'und': []}
         }
         for elem in resource_references:
-            obj['field_resources']['und'].append({'target_id': '{} ({})'.format(elem['title'], elem['nid'])})
+            obj['field_resources']['und'].append({'target_id': u'{} ({})'.format(elem['title'], elem['nid'])})
 
         url = 'https://{}/api/dataset/node/{}'.format(ddh_host, dataset_node)
         debug_report('Resource Attach - {} (multiple2)'.format(url), obj)
@@ -288,7 +287,7 @@ def new_dataset(ds, id=None):
         for elem in resource_references:
             obj = {
               'workflow_status': 'published',
-              'field_resources': {'und': [{ 'target_id': '{} ({})'.format(elem['title'], elem['nid'])}] }
+              'field_resources': {'und': [{ 'target_id': u'{} ({})'.format(elem['title'], elem['nid'])}] }
             }
 
             debug_report('Resource Attach - {} (single)'.format(url), obj)

@@ -50,6 +50,11 @@ def get(field, key, default=False):
 
     return ddh_terms[field]['keywords'].get(key.lower(), fail_term)
 
+def set_default(field, key):
+    global ddh_terms
+
+    ddh_terms[field]['default'] = ddh_terms[field]['keywords'].get(key.lower())
+
 def update(obj, values, default=False):
 
     for k,v in values.iteritems():
