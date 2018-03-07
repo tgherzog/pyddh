@@ -1,5 +1,14 @@
 
 
+### ddh_fix.py
+
+Minor script that demonstrates how to make batch updates to specified DDH records
+
+### eex_harvest.py
+
+Slight misnomer here. This is a bespoke script intended to do a one-time export/import from energydata.info
+to DDH.
+
 ### open_datasets.py
 
 Defines "native" (not externally harvested) datasets in DCS, and their partial paths (e.g., dataset/{path}) in DDH
