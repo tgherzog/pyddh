@@ -76,6 +76,16 @@ def load(host, user=None, pswd=None):
     login(host, user, pswd)
     token()
 
+def get(url):
+    global ddh_host, ddh_session_key, ddh_session_value, ddh_token
+
+    response = requests.get(url, cookies={ddh_session_key: ddh_session_value})
+    try:
+        return response.json()
+    except:
+        raise APIError('put', id, response.text)
+
+    
 def ds_template():
 
     template = {
@@ -274,13 +284,21 @@ def new_dataset(ds, id=None):
 
         url = 'https://{}/api/dataset/node/{}'.format(ddh_host, dataset_node)
         debug_report('Resource Attach - {} (multiple2)'.format(url), obj)
-        for i in range(0,len(resource_references)):
-            response = requests.put(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
+        for i in range(len(resource_references)):
+            # Unfortunately, errors or anomalies for these calls usually indicate that the resource was successfully
+            # attached but that the server subsequently died without returning a valid HTTP response or JSON object
+            # so we just continue on
             try:
+                response = None
+                response = requests.put(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
                 data = response.json()
                 nid =  data['nid']
+
+            except requests.exceptions.ConnectionError as err:
+                print 'Warning: ConnectionError enountered attaching resources to {} - proceeding ({})'.format(dataset_node, i)
+
             except:
-                raise APIError('put', id, response.text)
+                print 'Warning: Error enountered attaching resources to {} - proceeding ({})'.format(dataset_node, i)
 
     elif len(resource_references) > 0 and rsrc_approach == 'posthoc-single':
         url = 'https://{}/api/dataset/node/{}'.format(ddh_host, dataset_node)
@@ -298,11 +316,12 @@ def new_dataset(ds, id=None):
             except:
                 raise APIError('put', id, response.text)
 
-    return dataset_node
+    return {'nid': dataset_node, 'resources': resource_references}
  
-def debug_report(label, obj):
+def debug_report(label, obj=None):
     global debug
 
     if debug:
         print label
-        print json.dumps(obj, indent=4)
+        if obj is not None:
+          print json.dumps(obj, indent=4)
