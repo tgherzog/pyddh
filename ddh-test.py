@@ -4,13 +4,15 @@
 Conduct DDH API tests
 
 Usage:
-    ddh-test.py dataset --json=FILE [--resource=ID]
-    ddh-test.py update ID RESOURCE
-    ddh-test.py resource --json=FILE [--dataset=ID] [--title=TITLE]
-    ddh-test.py attach --resource=ID FILE
-    ddh-test.py get ID
-    ddh-test.py put --json=FILE ID
-    ddh-test.py token
+    ddh-test.py dataset [--host=HOST] --json=FILE [--resource=ID]
+    ddh-test.py resource [--host=HOST] --json=FILE [--dataset=ID] [--title=TITLE]
+    ddh-test.py attach [--host=HOST] --resource=ID FILE
+    ddh-test.py get [--host=HOST] ID
+    ddh-test.py put [--host=HOST] --json=FILE ID
+    ddh-test.py delete [--host=HOST] ID
+    ddh-test.py login [--host=HOST]
+
+Note that DDH currently does not support DELETE
 """
 
 import requests
@@ -26,7 +28,8 @@ session_key = ''
 session_val = ''
 session_token = ''
 
-host = 'newdatacatalogstg.worldbank.org'
+host = config['--host'] or 'datacatalog.worldbank.org'
+
 uid  = '19764' # becomes both the node's uid and the TTL
 
 def login(host, user=None, pswd=None):
@@ -73,8 +76,10 @@ if config.get('--json'):
         
 login(host)
 
-if config['token']:
-    print get_token()
+if config['login']:
+    token = get_token()
+    print 'Cookie: {}={}'.format(session_key, session_val)
+    print 'X-CSRF-Token: {}'.format(token)
 
 elif config['get']:
     endpoint = 'api/dataset/node/{}'.format(config['ID'])
@@ -158,52 +163,43 @@ elif config['put']:
     url = 'https://{}/{}/{}'.format(host, endpoint, config['ID'])
 
     print "PUT to {}".format(url)
-    response = requests.put(url, cookies={session_key: session_val}, headers={'X-CSRF-Token': token, 'Content-Type': 'application/json'}, json=data_source)
+    response = None
+    response_result = None
+    return_type = 'Normal'
     try:
+        response = requests.put(url, cookies={session_key: session_val}, headers={'X-CSRF-Token': token, 'Content-Type': 'application/json'}, json=data_source)
         data = response.json()
-        t_response = json.dumps(data, indent=4)
-    except:
-        t_response = response.text
+        response_result = json.dumps(data, indent=4)
+    except requests.exceptions.ConnectionError as err:
+        raise
+        response = err.response
+        return_type = type(err).__name__
+    except Exception as err:
+        return_type = type(err).__name__
 
-    print 'SUBMITTED DATASET'
+    # sanity checks
+    if response is None:
+        response = requests.Response()
+
+    if response.request is None:
+        response.request = requests.Request()
+        response.request.body = ''
+
+    if response_result is None:
+        response_result = response.text
+
+    print 'RESULT'
+    print return_type
+    print 'SUBMITTED DATA'
     print response.request.body
+    print 'RESPONSE STATUS'
+    print response.status_code
     print 'REQUEST HEADERS'
     print response.request.headers
     print 'RESPONSE HEADERS'
     print response.headers
     print 'RESPONSE'
-    print t_response
-
-elif config['update']:
-    endpoint = 'api/dataset/node'
-    token = get_token()
-    url = 'https://{}/{}/{}'.format(host, endpoint, config['ID'])
-    dataset = {
-        'field_resources': {
-            'und': [
-                {'target_id': 'afgexistingpowerplants.json (107336)' },
-                {'target_id': 'afgfuturepowerplants.json (107337)' },
-                {'target_id': 'afghanistanpowerplants2015.zip (107338)' },
-                {'target_id': 'futurepowerplants.zip (107339)' },
-            ]
-        }
-    }
-    response = requests.put(url, cookies={session_key: session_val}, headers={'X-CSRF-Token': token, 'Content-Type': 'application/json'}, json=dataset)
-    try:
-        data = response.json()
-        t_response = json.dumps(data, indent=4)
-    except:
-        t_response = response.text
-
-    print 'SUBMITTED DATASET'
-    print response.request.body
-    # print json.dumps(dataset, indent=4)
-    print 'REQUEST HEADERS'
-    print response.request.headers
-    print 'RESPONSE HEADERS'
-    print response.headers
-    print 'RESPONSE'
-    print t_response
+    print response_result
 
 elif config['attach']:
     token = get_token()
@@ -220,3 +216,13 @@ elif config['attach']:
     print 'RESPONSE'
     print response.text
 
+elif config['delete']:
+    token = get_token()
+    url = 'https://{}/api/dataset/node/{}/delete'.format(host, config['ID'])
+    print "DELETE to {}".format(url)
+
+    response = requests.post(url, cookies={session_key: session_val}, headers={'X-CSRF-Token': token}, json={})
+    print 'RESPONSE STATUS'
+    print response.status_code
+    print 'RESPONSE'
+    print response.text

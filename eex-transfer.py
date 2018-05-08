@@ -1,19 +1,19 @@
 #!/usr/bin/python -u
 """
-Harvest data from eex and load into DDH. The name is a slight misnomer; the script
-imports data, it doesn't synchronize it.
+transfer data from eex and load into DDH.
 
 Usage:
-  eex-harvest.py --summary
-  eex-harvest.py [--overwrite] NAME
-  eex-harvest.py [--overwrite] --all
-  eex-harvest.py --from=FILE
-  eex-harvest.py --test=FILE
+  eex-transfer.py [--debug] --summary
+  eex-transfer.py [--debug --overwrite] NAME
+  eex-transfer.py [--debug --overwrite] --all
+  eex-transfer.py [--debug] --from=FILE
+  eex-transfer.py [--debug] --test=FILE
 
 Options:
   --overwrite, -w     Overwrite all downloaded files (otherwise, just download new files)
+  --debug             Debug mode: reports submitted objects
   --all               Import all datasets from EEX
-  --summary           Generate summary list of qualifying datasets to harvest (serves as input to --from)
+  --summary           Generate summary list of qualifying datasets to transfer (serves as input to --from)
   --from=FILE         Load FILE as list of identifiers to process (one per line, # comments recognized)
   --test=FILE         Load FILE as a test JSON object instead of reading the energydata API
 
@@ -55,22 +55,32 @@ import ddh
 
 config = docopt(__doc__)
 
-# options that could possibly be platform specific
-config.update({
-  'group_ref': 124846, # or None if datasets are not assigned to a collection
-  'ttl': 47197,    # Yann Tanvez (21812)
-  'collab': 47172, # Jemire (Jemi) Lacle (23715)
-})
+# defaults are now stored locally
+with open('config.yaml', 'r') as fd:
+    try:
+        yaml_config = yaml.load(fd)
+        for k,v in yaml_config['defaults'].iteritems():
+            if k not in config:
+                config[k] = v
+    except:
+        raise
 
-host     = 'https://energydata.info'
-target   = 'newdatacatalogstg.worldbank.org'
+# sanity checks
+for k in ['host', 'target', 'ttl', 'max_size']:
+    if k not in config:
+        sys.exit('{} is undefined'.format(k))
+
+# for convenience, some config paarams are converted to local vars
+(host,target) = (config['host'], config['target'])
 api_base = '{}/api/3/action'.format(host)
 time_fmt = '%Y-%m-%dT%H:%M:%S'
 
 try:
     ddh.load(target)
     ddh.taxonomy.set_default('field_format', 'Other')
-    # ddh.dataset.debug = True
+    if config['--debug']:
+        ddh.dataset.debug = True
+
 except ddh.dataset.InitError as err:
     sys.stderr.write(err.message + '\n')
     sys.exit(-1)
@@ -103,6 +113,9 @@ for id in src_package_list:
         pkg = test_pkg
     elif config.get('NAME') and config['NAME'] != id:
         continue
+    elif id in config.get('black_list',[]):
+        print 'Skipping: {} is on the blacklist.'.format(id)
+        continue
     else:
         response = requests.get('{}/package_show?id={}'.format(api_base, id))
         pkg = response.json()
@@ -112,11 +125,13 @@ for id in src_package_list:
         sys.stderr.write('ERROR: ' + id + '\n')
     elif pkg['success'] and info.get('organization') and info['organization']['title'] == 'World Bank Group':
         if config['--summary']:
+            # print '{}'.format(id)
             print '{},{}'.format(id, len(info.get('resources', [])))
             continue
 
         print 'Processing {} ({})'.format(info['name'], info['id'])
         dataset_type = 'Other' # default dataset type
+        resource_failure = False
         if info.get('resources'):
             dir = '{}/{}'.format(downloads, info['id'])
 
@@ -136,14 +151,16 @@ for id in src_package_list:
                     (basename,ext) = os.path.splitext(filename)
 
                     if ext == '':
-                        print 'Warning: no support for files with no file extension: {} in {} ({})'.format(filename, info['name'], info['id'])
-                        next
+                        print 'Skipping: no support for files with no file extension: {} in {} ({}).'.format(filename, info['name'], info['id'])
+                        resource_failure = True
+                        break
 
                     ext = extension_map.get(ext.lower(), ext.lower())
 
                     if ext[1:] not in supported_extensions:
-                        print 'Warning: {} is not a supported file type in DDH: {} ({})'.format(filename, info['name'], info['id'])
-                        next
+                        print 'Skipping: {} is not a supported file type in DDH: {} ({}).'.format(filename, info['name'], info['id'])
+                        resource_failure = True
+                        break
 
                     # stream the download to a file
                     download = '{}/{}'.format(dir, basename + ext)
@@ -156,6 +173,9 @@ for id in src_package_list:
                         with open(download, 'wb') as fd:
                             for chunk in f_response.iter_content(chunk_size=1024):
                                 fd.write(chunk)
+
+        if resource_failure:
+            continue
 
         # map country codes
         countries = info['country_code'] + info['region']
@@ -187,19 +207,19 @@ for id in src_package_list:
         ds = ddh.dataset.ds_template()
         ds.update({
             'field_wbddh_dsttl_upi': config['ttl'],
-            'field_wbddh_collaborator_upi': config['collab'],
-            'og_group_ref': config['group_ref'],
+            'field_wbddh_collaborator_upi': config.get('collab'),
+            'og_group_ref': config.get('group_ref'),
             'field_external_metadata': yaml.safe_dump(external_metadata, default_flow_style=False),
+            'field_tags': config.get('field_tag'),
         })
 
         ddh.taxonomy.update(ds, {
-            'field_ddh_harvest_src': 'Energy Info',
+            'field_ddh_harvest_src': config.get('harvest_src'),
             'field_wbddh_data_class': 'Public',
             'field_topic': 'Energy and Extractives',
             'field_wbddh_gps_ccsas': 'Energy & Extractives',
             'field_wbddh_languages_supported': 'English',
             'field_wbddh_ds_source': 'World Bank Group',
-            'field_tags': 'energydata.info',
         })
 
         # add metadata that varies by dataset
@@ -213,10 +233,10 @@ for id in src_package_list:
             'field_ddh_external_contact_email': info['author_email'],
             'field_wbddh_source': info['url'],
             'field_wbddh_publisher_name': info['author'],
-            'field_wbddh_reference_system': info['ref_system'],
-            'field_wbddh_start_date': ddh.util.date(info['start_date']),
-            'field_wbddh_end_date': ddh.util.date(info['end_date']),
-            'field_wbddh_time_periods': ddh.util.date(info['release_date']),
+            'field_wbddh_reference_system': info.get('ref_system',''),
+            'field_wbddh_start_date': ddh.util.date(info.get('start_date')),
+            'field_wbddh_end_date': ddh.util.date(info.get('end_date')),
+            'field_wbddh_time_periods': ddh.util.date(info.get('release_date')),
         })
 
         ddh.taxonomy.update(ds, {
@@ -241,8 +261,9 @@ for id in src_package_list:
           })
 
           if r.get('local_path'):
-            if os.stat(r['local_path']).st_size > 90 * (1024*1024):
+            if os.stat(r['local_path']).st_size > config['max_size']*(1024*1024):
                 print 'Warning: file exceeds maximum upload size: {} in {} ({})'.format(r['local_path'], info['name'], info['id'])
+                r['large_file_url'] = r['url']
             else:
                 rs['upload'] = r['local_path']
           elif r.get('url'):
@@ -251,8 +272,11 @@ for id in src_package_list:
           ds['resources'].append(rs)
 
         try:
-            nodeid = ddh.dataset.new_dataset(ds)
-            print 'Created {},{}'.format(info['name'], nodeid)
+            result = ddh.dataset.new_dataset(ds)
+            print 'Created {},{}'.format(info['name'], result['nid'])
+            for i in range(len(result['resources'])):
+                if info['resources'][i].get('large_file_url'):
+                    print 'ATTACH: {}/{}'.format(result['resources'][i]['nid'], info['resources'][i]['large_file_url'])
         except ddh.dataset.APIError as err:
             print 'Error creating dataset [{}]: {} ({})'.format(err.type, info['name'], info['id'])
             print err.response

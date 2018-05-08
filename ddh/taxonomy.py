@@ -58,7 +58,8 @@ def set_default(field, key):
 def update(obj, values, default=False):
 
     for k,v in values.iteritems():
-        obj[k] = get(k, v, default=default)
+        if is_tax(k):
+            obj[k] = get(k, v, default=default)
 
 # get all keywords for a given term
 def get_keywords(field, tid):
@@ -72,11 +73,12 @@ def get_keywords(field, tid):
     return keywords
 
 # load from APIs: required once on module load
-def load(host):
+def load(config):
     global ddh_terms
 
     ddh_terms = {}
-    response = requests.get('https://{}/internal/listvalues'.format(host))
+    path = config.get('taxonomy_endpoint') or '/api/taxonomy/listvalues'
+    response = requests.get('https://{}{}'.format(config['host'], path))
     api_data = response.json()
 
     for elem in api_data:
@@ -87,6 +89,10 @@ def load(host):
             name = 'field_wbddh_ds_source'
         else:
             name = elem['machine_name']
+
+        # field_tags has a different API syntax, so it doesn't get mapped to tids
+        if name == 'field_tags':
+            continue
 
         if ddh_terms.get(name) is None:
             ddh_terms[name] = {'default': None, 'keywords': {}}

@@ -7,6 +7,8 @@ import time
 import json
 import os
 import yaml
+import re
+import copy
 
 ddh_host = None
 ddh_session_key = None
@@ -29,29 +31,21 @@ class APIError(Error):
         self.type = type
         self.response = response
 
-class ValidationError(Error):
+class TaxonomyError(Error):
     
-    def __init__(self, field):
+    def __init__(self, field, value):
         self.field = field
-        self.message = '{} is undefined'.format(field)
+        self.value = value
+        self.message = '{} is undefined for {}'.format(value, field)
 
-def login(host, user, pswd):
+def login(config, user=None, pswd=None):
     global ddh_host, ddh_session_key, ddh_session_value, ddh_token
 
-    ddh_host = host
+    ddh_host = host = config['host']
 
     if not user or not pswd:
-        try:
-            path = os.path.join(os.getcwd(), 'config.yaml')
-            with open(path, 'r') as fd:
-                try:
-                    config = yaml.load(fd)
-                    user = config[host]['user']
-                    pswd = config[host]['password']
-                except:
-                    raise InitError('Incorrect yaml file format in {}'.format(path))
-        except:
-            raise InitError('user/password not specified, and config.yaml not found')
+        user = config['user']
+        pswd = config['password']
 
     body = {'username': user, 'password': pswd}
     url = 'https://{}/api/dataset/user/login'.format(host)
@@ -71,19 +65,48 @@ def token():
     response = requests.post(url, cookies={ddh_session_key: ddh_session_value})
     ddh_token = response.text
 
-def load(host, user=None, pswd=None):
+def load(config, user=None, pswd=None):
 
-    login(host, user, pswd)
+    login(config, user, pswd)
     token()
+
+def search(params, type='dataset', resources=False):
+    global ddh_host
+
+    query = copy.copy(params) # shallow copy should suffice
+    taxonomy.update(query, params)
+    query['type'] = type
+    for k,v in query.iteritems():
+        if v == None:
+            raise TaxonomyError(k, params[k])
+
+    query = {'filter['+k+']':v for k,v in query.iteritems()}
+
+    fields = ['nid', 'title']
+    if resources:
+        fields.append('field_resources')
+
+    query['fields'] = '[' + ','.join(fields) + ',]'
+    
+    # crude urlencode so as not to escape the brackets
+    query = '&'.join([k + '=' + v for k,v in query.iteritems()])
+
+    url = 'https://{}/search-service/search_api/datasets?{}'.format(ddh_host, query)
+
+    return get(url)
+
 
 def get(url):
     global ddh_host, ddh_session_key, ddh_session_value, ddh_token
+
+    if re.match(r'^\d+$', url):
+        url = 'https://{}/api/dataset/node/{}'.format(ddh_host, url)
 
     response = requests.get(url, cookies={ddh_session_key: ddh_session_value})
     try:
         return response.json()
     except:
-        raise APIError('put', id, response.text)
+        raise APIError('get', url, response.text)
 
     
 def ds_template():
@@ -127,7 +150,16 @@ def _set_values(d, elem):
         if v is None:
             continue
 
-        if k != 'workflow_status' and taxonomy.is_tax(k):
+        if k in ['field_tags']:
+            # freetagging fields have a different format than other taxonomy fields
+            if type(v) is list:
+                tags = v
+            else:
+                tags = [v]
+
+            d[k] = {'und': { 'value_field': ' '.join(['"" {} ""'.format(i) for i in tags]) }}
+                
+        elif k != 'workflow_status' and taxonomy.is_tax(k):
             if type(v) is list:
                 d[k] = {'und': v}
             else:
@@ -180,6 +212,11 @@ def update_dataset(nid, ds):
     global ddh_host, ddh_session_key, ddh_session_value, ddh_token
 
     obj = new_object(ds)
+
+    # workflow status defaults to published if undefined 
+    if not 'workflow_status' in obj:
+        obj['workflow_status'] = 'published'
+
     url = 'https://{}/api/dataset/node/{}'.format(ddh_host, nid)
     debug_report('Update dataset - {}'.format(url), obj)
     response = requests.put(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
@@ -295,10 +332,10 @@ def new_dataset(ds, id=None):
                 nid =  data['nid']
 
             except requests.exceptions.ConnectionError as err:
-                print 'Warning: ConnectionError enountered attaching resources to {} - proceeding ({})'.format(dataset_node, i)
+                print 'Warning: ConnectionError encountered attaching resources to {} - proceeding ({})'.format(dataset_node, i)
 
             except:
-                print 'Warning: Error enountered attaching resources to {} - proceeding ({})'.format(dataset_node, i)
+                print 'Warning: Error encountered attaching resources to {} - proceeding ({})'.format(dataset_node, i)
 
     elif len(resource_references) > 0 and rsrc_approach == 'posthoc-single':
         url = 'https://{}/api/dataset/node/{}'.format(ddh_host, dataset_node)
@@ -318,6 +355,22 @@ def new_dataset(ds, id=None):
 
     return {'nid': dataset_node, 'resources': resource_references}
  
+def delete(node_id):
+    global ddh_host, ddh_session_key, ddh_session_value, ddh_token
+
+    url = 'https://{}/api/dataset/node/{}/delete'.format(ddh_host, node_id)
+
+    response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json={})
+    try:
+        result = response.json()
+
+        # result will now be a string either 'success' or 'Invalid node Id'
+        return result == 'success'
+
+    except:
+        raise APIError('delete', node_id, response.text)
+
+
 def debug_report(label, obj=None):
     global debug
 
