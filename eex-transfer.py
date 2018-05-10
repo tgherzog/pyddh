@@ -125,8 +125,8 @@ for id in src_package_list:
         sys.stderr.write('ERROR: ' + id + '\n')
     elif pkg['success'] and info.get('organization') and info['organization']['title'] == 'World Bank Group':
         if config['--summary']:
-            # print '{}'.format(id)
-            print '{},{}'.format(id, len(info.get('resources', [])))
+            print '{}'.format(id)
+            # print '{},{}'.format(id, len(info.get('resources', [])))
             continue
 
         print 'Processing {} ({})'.format(info['name'], info['id'])
