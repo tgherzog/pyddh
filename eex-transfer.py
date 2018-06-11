@@ -8,6 +8,7 @@ Usage:
   eex-transfer.py [--debug --overwrite] --all
   eex-transfer.py [--debug] --from=FILE
   eex-transfer.py [--debug] --test=FILE
+  eex-transfer.py [--debug] --postfix=FILE
 
 Options:
   --overwrite, -w     Overwrite all downloaded files (otherwise, just download new files)
@@ -16,6 +17,7 @@ Options:
   --summary           Generate summary list of qualifying datasets to transfer (serves as input to --from)
   --from=FILE         Load FILE as list of identifiers to process (one per line, # comments recognized)
   --test=FILE         Load FILE as a test JSON object instead of reading the energydata API
+  --postfix=FILE      Attach URLs for files too large to load via API. FILE is a 2-column CSV with resource node IDs and filenames
 
 """
 
@@ -46,8 +48,8 @@ formats_map = {
 supported_extensions = [
 'csv', 'html', 'xls', 'json', 'xlsx', 'doc', 'docx', 'rdf', 'txt', 'jpg',
 'png', 'gif', 'tiff', 'pdf', 'odf', 'ods', 'odt', 'tsv', 'geojson', 'xml',
-'zip', 'dta', 'do', 'apf', 'dbf', 'mdb', 'gdb', 'mpk', 'ppts', 'ppt', 'py',
-'r', 'sav', 'zsav', 'sys', 'por', 'dat']
+'zip', 'dta', 'do', 'apf', 'dbf', 'mdb', 'gdb', 'mpk', 'pptx', 'ppt', 'py',
+'r', 'sav', 'zsav', 'sys', 'por', 'dat', 'kml', 'kmz']
 
 sys.dont_write_bytecode = True
 import ddh
@@ -66,7 +68,11 @@ with open('config.yaml', 'r') as fd:
         raise
 
 # sanity checks
-for k in ['host', 'target', 'ttl', 'max_size']:
+sanity_checks = ['host', 'target', 'ttl', 'max_size']
+if config['--postfix']:
+    sanity_checks.append('postfix-subdir')
+
+for k in sanity_checks:
     if k not in config:
         sys.exit('{} is undefined'.format(k))
 
@@ -92,6 +98,19 @@ if not os.path.exists(downloads):
 
 test_pkg = None
 
+if config['--postfix']:
+    with open(config['--postfix'],'r') as paths:
+        for row in paths:
+            row = row.strip()
+            (nid,name) = row.split(',', 2)
+            try:
+                ddh.dataset.update_dataset(nid, {'field_link_api': 'https://{}{}/{}'.format(target, config['postfix-subdir'], name)})
+            except ddh.dataset.APIError as err:
+                print 'Error updating resource [{}]: {}'.format(err.type, nid)
+                print err.response
+        
+    sys.exit(0)
+
 # load test package if specified, along with a placeholder package list
 if config['--test']:
     # a one-item package list just so we go through the loop one time
@@ -108,13 +127,12 @@ else:
     src_package_list = response.json()['result']
 
 
+node_mapping = config.get('node_mapping') or {}
+
 for id in src_package_list:
     if test_pkg:
         pkg = test_pkg
     elif config.get('NAME') and config['NAME'] != id:
-        continue
-    elif id in config.get('black_list',[]):
-        print 'Skipping: {} is on the blacklist.'.format(id)
         continue
     else:
         response = requests.get('{}/package_show?id={}'.format(api_base, id))
@@ -130,6 +148,23 @@ for id in src_package_list:
             continue
 
         print 'Processing {} ({})'.format(info['name'], info['id'])
+
+        if node_mapping.get(id):
+            ds = {
+              'field_ddh_harvest_src': ddh.taxonomy.get('field_ddh_harvest_src', 'energydata.info'),
+              'field_ddh_harvest_sys_id': info['id']
+            }
+
+            try:
+                result = ddh.dataset.update_dataset(node_mapping[id], ds)
+                print 'Updating harvest fields for {} ({})'.format(node_mapping[id], info['id'])
+            except ddh.dataset.APIError as err:
+                print 'Error updating dataset [{}]: {} ({})'.format(err.type, info['name'], info['id'])
+                print err.response
+
+            continue
+
+
         dataset_type = 'Other' # default dataset type
         resource_failure = False
         if info.get('resources'):
@@ -276,7 +311,7 @@ for id in src_package_list:
             print 'Created {},{}'.format(info['name'], result['nid'])
             for i in range(len(result['resources'])):
                 if info['resources'][i].get('large_file_url'):
-                    print 'ATTACH: {}/{}'.format(result['resources'][i]['nid'], info['resources'][i]['large_file_url'])
+                    print 'ATTACH: {}/{}'.format(result['resources'][i]['nid'], info['resources'][i]['local_path'])
         except ddh.dataset.APIError as err:
             print 'Error creating dataset [{}]: {} ({})'.format(err.type, info['name'], info['id'])
             print err.response
