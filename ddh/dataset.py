@@ -70,7 +70,7 @@ def load(config, user=None, pswd=None):
     login(config, user, pswd)
     token()
 
-def search(params, type='dataset', resources=False):
+def search(params, fields=[], type='dataset'):
     global ddh_host
 
     query = copy.copy(params) # shallow copy should suffice
@@ -82,11 +82,11 @@ def search(params, type='dataset', resources=False):
 
     query = {'filter['+k+']':v for k,v in query.iteritems()}
 
-    fields = ['nid', 'title']
-    if resources:
-        fields.append('field_resources')
+    _fields = set(fields)
+    _fields.update(['title'])
 
-    query['fields'] = '[' + ','.join(fields) + ',]'
+    # NB: nid must be the first element always
+    query['fields'] = '[nid,' + ','.join(_fields) + ',]'
     
     # crude urlencode so as not to escape the brackets
     query = '&'.join([k + '=' + v for k,v in query.iteritems()])
@@ -104,7 +104,12 @@ def get(url):
 
     response = requests.get(url, cookies={ddh_session_key: ddh_session_value})
     try:
-        return response.json()
+        result = response.json()
+        if type(result) is not dict:
+            return None
+
+        return result
+
     except:
         raise APIError('get', url, response.text)
 
