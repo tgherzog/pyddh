@@ -242,9 +242,10 @@ def new_dataset(ds, id=None):
     # this variable determines how the module tries to attach child resources to the dataset
     # 'concurrent'     - resource references are included with the initial dataset POST (most efficient)
     # 'posthoc'        - resource references are attached to dataset in a subsequent PUT, as one object
-    # 'posthoc-single' - attached to data in multiple subsequent PUTs (least efficient)
+    # 'posthoc2'       - like posthoc, but PUT request is repeated multiple times until all resources are attached (kludgy but works)
+    # 'posthoc-single' - attached to data in multiple subsequent PUTs, one per resource (least efficient)
     #
-    # Currently the API only works in 'post-single' mode
+    # Currently the API only works in 'posthoc2' mode
 
     rsrc_approach = 'posthoc2'
 
