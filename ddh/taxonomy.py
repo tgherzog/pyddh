@@ -39,6 +39,18 @@ def is_tax(field):
     return ddh_terms.get(field) is not None
 
 
+# get term name for a tid
+def term(field, key):
+    global ddh_terms
+
+    if type(key) is dict:
+        if field in key and key[field]:
+            key = key[field]['und'][0]['tid']
+        else:
+            return None
+
+    return ddh_terms[field]['terms'].get(key)
+
 # get DDH term for a given field and value with optional default if not found
 def get(field, key, default=False):
     global ddh_terms
@@ -95,12 +107,16 @@ def load(config):
             continue
 
         if ddh_terms.get(name) is None:
-            ddh_terms[name] = {'default': None, 'keywords': {}}
+            ddh_terms[name] = {'default': None, 'keywords': {}, 'terms': {}}
 
-        if re.search('not specified$', elem['list_value_name'].lower()) is None:
-            ddh_terms[name]['keywords'][elem['list_value_name'].lower()] = elem['tid']
+        key = elem['tid']
+        value = elem['list_value_name']
+        ddh_terms[name]['terms'][key] = value
+
+        if re.search('not specified$', value.lower()) is None:
+            ddh_terms[name]['keywords'][value.lower()] = key
         else:
-            ddh_terms[name]['default'] = elem['tid']
+            ddh_terms[name]['default'] = key
 
     # now get the country names from the WB API
     response = requests.get('http://api.worldbank.org/v2/en/country?per_page=500&format=json')
