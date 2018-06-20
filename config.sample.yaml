@@ -1,0 +1,21 @@
+# rename this file to config.yaml before use. It should reside in the same
+# directory as your python script
+# usernames/passwords are domain specific
+datacatalog.worldbank.org:
+  user:     YOUR_USERNAME
+  password: YOUR_PASSWORD
+defaults:
+  # use this space to provide script-specific defaults
+  # The values here are used in the eex-transfer.py script
+  host: https://energydata.info
+  target: newdatacatalogstg.worldbank.org
+  max_size: 95
+  group_ref: 143185
+  ttl: 11083 # Jonathan Davidar
+  collab: [23715, 38970] # Jemi & Naichen
+  harvest_src: "EnergyData.info"
+  field_tag: "energydata.info"
+  postfix-subdir: "/sites/default/files/dataset_resources/ddhfiles/public/eex"
+  node_mapping:
+    se4all-database: 94654
+    making-power-affordable-for-africa-and-viable-for-its-utilities: 98073
