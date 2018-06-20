@@ -1,7 +1,27 @@
 #!/usr/local/bin/python
 
 """
-Conduct DDH API tests
+Conduct DDH API tests and demonstrate use of the the DDH API.
+
+While updating existind datasets/resources is straight-forward, adding a NEW dataset
+typically involves multiple API calls. The ddh.dataset.new_dataset function demonstrates
+this process in a way that supports multiple resources.
+
+  1) dataset call to create the dataset (POST)
+  2) resource call to create the child resource (POST)
+  3) attach call to attach a file to the resource in step 2 (PUT)
+  4) put call to attach the resource in step 2 to the dataset in step 1 (PUT)
+
+All ID parameters are Drupal node IDs
+
+Modes:
+    dataset:  create a new dataset via POST
+    resource: create a new resource via POST; optionally attached to a dataset
+    attach:   attach a file from disk to a (previously recreated) resource
+    get:      fetch a dataset or resource object
+    put:      update an existing dataset/resource
+    delete:   delete an existing dataset/resource
+    login:    login only (unnecessary, since all operations perform this)
 
 Usage:
     ddh-test.py dataset [--host=HOST] --json=FILE [--resource=ID]
@@ -12,7 +32,13 @@ Usage:
     ddh-test.py delete [--host=HOST] ID
     ddh-test.py login [--host=HOST]
 
-Note that DDH currently does not support DELETE
+Options:
+    --host=HOST      Alternate server: defaults to datacatalog.worldbank.org
+    --json=FILE      The filename of the json object for creating/updating datasets/resources
+    --dataset=ID     Dataset to which to attach the resource (I'm not sure this works correctly)
+    --title=TITLE    Override "title" attribute in JSON file
+    --resource=ID    Resource to which the file should be attached
+
 """
 
 import requests
