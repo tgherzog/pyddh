@@ -45,7 +45,12 @@ def term(field, key):
 
     if type(key) is dict:
         if field in key and key[field]:
-            key = key[field]['und'][0]['tid']
+            if 'tid' in key[field]['und'][0]:
+                key = key[field]['und'][0]['tid']
+            elif 'value' in key[field]['und'][0]:
+                key = key[field]['und'][0]['value']
+            else:
+                return None
         else:
             return None
 
@@ -109,7 +114,7 @@ def load(config):
         if ddh_terms.get(name) is None:
             ddh_terms[name] = {'default': None, 'keywords': {}, 'terms': {}}
 
-        key = elem['tid']
+        key = str(elem['tid'])
         value = elem['list_value_name']
         ddh_terms[name]['terms'][key] = value
 

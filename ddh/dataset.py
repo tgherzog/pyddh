@@ -29,6 +29,7 @@ class APIError(Error):
 
     def __init__(self, type, id, response):
         self.type = type
+        self.url  = id
         self.response = response
 
 class TaxonomyError(Error):
@@ -70,15 +71,20 @@ def load(config, user=None, pswd=None):
     login(config, user, pswd)
     token()
 
-def search(params, fields=[], type='dataset'):
+def search(fields=[], filter={}, obj_type='dataset'):
     global ddh_host
 
-    query = copy.copy(params) # shallow copy should suffice
-    taxonomy.update(query, params)
-    query['type'] = type
+    # if 1st argument is a dict then it's the filter, not fields
+    if type(fields) is dict:
+        filter = fields
+        fields = []
+
+    query = copy.copy(filter) # shallow copy should suffice
+    taxonomy.update(query, filter)
+    query['type'] = obj_type
     for k,v in query.iteritems():
         if v == None:
-            raise TaxonomyError(k, params[k])
+            raise TaxonomyError(k, filter[k])
 
     query = {'filter['+k+']':v for k,v in query.iteritems()}
 
@@ -87,20 +93,33 @@ def search(params, fields=[], type='dataset'):
 
     # NB: nid must be the first element always
     query['fields'] = '[nid,' + ','.join(_fields) + ',]'
+
+    totalRecords = None
+    recordsRead  = 0
+    query['limit'] = str(250)
+
+    while totalRecords is None or recordsRead < totalRecords:
+        query['offset'] = str(recordsRead)
     
-    # crude urlencode so as not to escape the brackets
-    query = '&'.join([k + '=' + v for k,v in query.iteritems()])
+        # crude urlencode so as not to escape the brackets
+        query_string = '&'.join([k + '=' + v for k,v in query.iteritems()])
 
-    url = 'https://{}/search-service/search_api/datasets?{}'.format(ddh_host, query)
+        url = 'https://{}/search-service/search_api/datasets?{}'.format(ddh_host, query_string)
 
-    return get(url)
+        response = get(url)
+        totalRecords = response['count']
+        if type(response['result']) is dict:
+            recordsRead += len(response['result'])
+            for k,v in response['result'].iteritems():
+                yield k,v
 
 
-def get(url):
+def get(url, obj_type='node'):
     global ddh_host, ddh_session_key, ddh_session_value, ddh_token
 
+    url = str(url)
     if re.match(r'^\d+$', url):
-        url = 'https://{}/api/dataset/node/{}'.format(ddh_host, url)
+        url = 'https://{}/api/dataset/{}/{}'.format(ddh_host, obj_type, url)
 
     response = requests.get(url, cookies={ddh_session_key: ddh_session_value})
     try:
