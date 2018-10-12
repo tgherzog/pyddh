@@ -33,7 +33,7 @@ Usage:
     ddh-test.py login [--host=HOST]
 
 Options:
-    --host=HOST      Alternate server: defaults to datacatalog.worldbank.org
+    --host=HOST      Alternate server with protocol: defaults to https://datacatalog.worldbank.org
     --json=FILE      The filename of the json object for creating/updating datasets/resources
     --dataset=ID     Dataset to which to attach the resource (I'm not sure this works correctly)
     --title=TITLE    Override "title" attribute in JSON file
@@ -46,6 +46,7 @@ import json
 import os
 import sys
 import yaml
+from urlparse import urlparse
 from docopt import docopt
 
 config = docopt(__doc__)
@@ -54,12 +55,20 @@ session_key = ''
 session_val = ''
 session_token = ''
 
-host = config['--host'] or 'datacatalog.worldbank.org'
+host = config['--host'] or 'https://datacatalog.worldbank.org'
 
+i = urlparse(host)
+if not i.netloc and not i.path:
+    raise ValueError('--host is not a valid URL')
+
+host = '{}://{}'.format(i.scheme or 'https', i.netloc or i.path)
 uid  = '19764' # becomes both the node's uid and the TTL
 
 def login(host, user=None, pswd=None):
     global ddh_host, session_key, session_val, session_token
+
+    i = urlparse(host)
+    host_key = i.netloc
 
     if not user or not pswd:
         try:
@@ -67,15 +76,15 @@ def login(host, user=None, pswd=None):
             with open(path, 'r') as fd:
                 try:
                     config = yaml.load(fd)
-                    user = config[host]['user']
-                    pswd = config[host]['password']
+                    user = config[host_key]['user']
+                    pswd = config[host_key]['password']
                 except:
                     raise InitError('Incorrect yaml file format in {}'.format(path))
         except:
             sys.stderr.write('user/password not specified, and config.yaml not found\n')
 
     body = {'username': user, 'password': pswd}
-    url = 'https://{}/api/dataset/user/login'.format(host)
+    url = '{}/api/dataset/user/login'.format(host)
 
     response = requests.post(url, json=body)
     json = response.json()
@@ -91,7 +100,7 @@ def get_token():
 
     return session_token
 
-    url = 'https://{}/{}'.format(host, 'services/session/token')
+    url = '{}/{}'.format(host, 'services/session/token')
     response = requests.post(url, cookies={session_key: session_val})
     return response.text
 
@@ -109,7 +118,7 @@ if config['login']:
 
 elif config['get']:
     endpoint = 'api/dataset/node/{}'.format(config['ID'])
-    url = 'https://{}/{}'.format(host, endpoint)
+    url = '{}/{}'.format(host, endpoint)
     response = requests.get(url, cookies={session_key: session_val})
     try:
         data = response.json()
@@ -117,12 +126,17 @@ elif config['get']:
     except:
         t_response = response.text
 
+    print 'REQUEST HEADERS'
+    print response.request.headers
+    print 'RESPONSE HEADERS'
+    print response.headers
+    print 'RESPONSE'
     print t_response
 
 elif config['dataset']:
     endpoint = 'api/dataset/node'
     token = get_token()
-    url = 'https://{}/{}'.format(host, endpoint)
+    url = '{}/{}'.format(host, endpoint)
     dataset = data_source
 
     if config['--resource'] is not None:
@@ -148,7 +162,7 @@ elif config['dataset']:
 elif config['resource']:
     endpoint = 'api/dataset/node'
     token = get_token()
-    url = 'https://{}/{}'.format(host, endpoint)
+    url = '{}/{}'.format(host, endpoint)
 
     dataset = {
         'type': 'resource',
@@ -186,7 +200,7 @@ elif config['resource']:
 elif config['put']:
     endpoint = 'api/dataset/node'
     token = get_token()
-    url = 'https://{}/{}/{}'.format(host, endpoint, config['ID'])
+    url = '{}/{}/{}'.format(host, endpoint, config['ID'])
 
     print "PUT to {}".format(url)
     response = None
@@ -229,7 +243,7 @@ elif config['put']:
 
 elif config['attach']:
     token = get_token()
-    url = 'https://{}/api/dataset/node/{}/attach_file'.format(host, config['--resource'])
+    url = '{}/api/dataset/node/{}/attach_file'.format(host, config['--resource'])
 
     post_info = {'files[1]': open(config['FILE'], 'rb'), 'field_name': (None,'field_upload'), 'attach': (None,'1')}
     response = requests.post(url, cookies={session_key: session_val}, headers={'X-CSRF-Token': token}, files=post_info)
@@ -244,7 +258,7 @@ elif config['attach']:
 
 elif config['delete']:
     token = get_token()
-    url = 'https://{}/api/dataset/node/{}/delete'.format(host, config['ID'])
+    url = '{}/api/dataset/node/{}/delete'.format(host, config['ID'])
     print "DELETE to {}".format(url)
 
     response = requests.post(url, cookies={session_key: session_val}, headers={'X-CSRF-Token': token}, json={})
