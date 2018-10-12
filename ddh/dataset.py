@@ -14,6 +14,8 @@ ddh_host = None
 ddh_session_key = None
 ddh_session_value = None
 ddh_token = None
+ddh_protocol = 'https'
+
 debug = False
 
 class Error(Exception):
@@ -40,16 +42,17 @@ class TaxonomyError(Error):
         self.message = '{} is undefined for {}'.format(value, field)
 
 def login(config, user=None, pswd=None):
-    global ddh_host, ddh_session_key, ddh_session_value, ddh_token
+    global ddh_host, ddh_session_key, ddh_session_value, ddh_token, ddh_protocol
 
     ddh_host = host = config['host']
+    ddh_protocol = config.get('protocol', ddh_protocol)
 
     if not user or not pswd:
         user = config['user']
         pswd = config['password']
 
     body = {'username': user, 'password': pswd}
-    url = 'https://{}/api/dataset/user/login'.format(host)
+    url = '{}://{}/api/dataset/user/login'.format(ddh_protocol, host)
 
     response = requests.post(url, json=body)
     json = response.json()
@@ -60,9 +63,9 @@ def login(config, user=None, pswd=None):
     ddh_session_value = json['sessid']
 
 def token():
-    global ddh_host, ddh_session_key, ddh_session_value, ddh_token
+    global ddh_host, ddh_session_key, ddh_session_value, ddh_token, ddh_protocol
 
-    url = 'https://{}/services/session/token'.format(ddh_host)
+    url = '{}://{}/services/session/token'.format(ddh_protocol, ddh_host)
     response = requests.post(url, cookies={ddh_session_key: ddh_session_value})
     ddh_token = response.text
 
@@ -72,7 +75,7 @@ def load(config, user=None, pswd=None):
     token()
 
 def search(fields=[], filter={}, obj_type='dataset'):
-    global ddh_host
+    global ddh_host, ddh_protocol
 
     # if 1st argument is a dict then it's the filter, not fields
     if type(fields) is dict:
@@ -104,7 +107,7 @@ def search(fields=[], filter={}, obj_type='dataset'):
         # crude urlencode so as not to escape the brackets
         query_string = '&'.join([k + '=' + v for k,v in query.iteritems()])
 
-        url = 'https://{}/search-service/search_api/datasets?{}'.format(ddh_host, query_string)
+        url = '{}://{}/search-service/search_api/datasets?{}'.format(ddh_protocol, ddh_host, query_string)
 
         response = get(url)
         totalRecords = response['count']
@@ -115,11 +118,11 @@ def search(fields=[], filter={}, obj_type='dataset'):
 
 
 def get(url, obj_type='node'):
-    global ddh_host, ddh_session_key, ddh_session_value, ddh_token
+    global ddh_host, ddh_session_key, ddh_session_value, ddh_token, ddh_protocol
 
     url = str(url)
     if re.match(r'^\d+$', url):
-        url = 'https://{}/api/dataset/{}/{}'.format(ddh_host, obj_type, url)
+        url = '{}://{}/api/dataset/{}/{}'.format(ddh_protocol, ddh_host, obj_type, url)
 
     response = requests.get(url, cookies={ddh_session_key: ddh_session_value})
     try:

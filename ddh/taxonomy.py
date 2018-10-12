@@ -93,9 +93,11 @@ def get_keywords(field, tid):
 def load(config):
     global ddh_terms
 
+    protocol = config.get('protocol', 'https')
+
     ddh_terms = {}
     path = config.get('taxonomy_endpoint') or '/api/taxonomy/listvalues'
-    response = requests.get('https://{}{}'.format(config['host'], path))
+    response = requests.get('{}://{}{}'.format(protocol, config['host'], path))
     api_data = response.json()
 
     for elem in api_data:
