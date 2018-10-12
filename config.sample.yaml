@@ -4,6 +4,8 @@
 datacatalog.worldbank.org:
   user:     YOUR_USERNAME
   password: YOUR_PASSWORD
+  # protocol is optional: defaults to https
+  protocol: https
 defaults:
   # use this space to provide script-specific defaults
   # The values here are used in the eex-transfer.py script
