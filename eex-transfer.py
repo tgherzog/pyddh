@@ -83,6 +83,9 @@ time_fmt = '%Y-%m-%dT%H:%M:%S'
 
 try:
     ddh.load(target)
+    ddh.dataset.safe_mode = False # assume the server is buggy
+    # ddh.dataset.safe_mode = True
+
     ddh.taxonomy.set_default('field_format', 'Other')
     if config['--debug']:
         ddh.dataset.debug = True
@@ -129,6 +132,7 @@ else:
 
 node_mapping = config.get('node_mapping') or {}
 
+
 for id in src_package_list:
     if test_pkg:
         pkg = test_pkg
@@ -150,17 +154,21 @@ for id in src_package_list:
         print 'Processing {} ({})'.format(info['name'], info['id'])
 
         if node_mapping.get(id):
-            ds = {
-              'field_ddh_harvest_src': ddh.taxonomy.get('field_ddh_harvest_src', 'energydata.info'),
-              'field_ddh_harvest_sys_id': info['id']
-            }
+            # set the value to some string or empty value to effectively ignore the dataset
+            if type(node_mapping[id]) is int:
+                ds = {
+                  'field_ddh_harvest_src': ddh.taxonomy.get('field_ddh_harvest_src', 'energydata.info'),
+                  'field_ddh_harvest_sys_id': info['id']
+                }
 
-            try:
-                result = ddh.dataset.update_dataset(node_mapping[id], ds)
-                print 'Updating harvest fields for {} ({})'.format(node_mapping[id], info['id'])
-            except ddh.dataset.APIError as err:
-                print 'Error updating dataset [{}]: {} ({})'.format(err.type, info['name'], info['id'])
-                print err.response
+                try:
+                    result = ddh.dataset.update_dataset(node_mapping[id], ds)
+                    print 'Updating harvest fields for {} ({})'.format(node_mapping[id], info['id'])
+                except ddh.dataset.APIError as err:
+                    print 'Error updating dataset [{}]: {} ({})'.format(err.type, info['name'], info['id'])
+                    print err.response
+            else:
+                print 'Ignoring dataset {}'.format(info['name'])
 
             continue
 
@@ -225,6 +233,11 @@ for id in src_package_list:
             else:
                 print 'Warning: unrecognized country/region code {} in {} ({})'.format(elem, info['name'], info['id'])
 
+        # Some CKAN fields need sanity checks
+        # some author_email fields are a list of addresses, some of which may well be blank. We strip the blanks and take the first one
+        author_email = [s for s in info['author_email'].split(',') if len(s.strip()) > 0]
+        author_email = author_email[0] if author_email else ''
+
         # We stuff a bunch of miscellanous information into the external_metadata field expressed as a yaml object
         # including for the moment, the external dataset identifier
         external_metadata = {'id': 'energydata.info'}
@@ -262,10 +275,9 @@ for id in src_package_list:
             'title': info['title'],
             'body': info['notes'],
             'field_ddh_harvest_sys_id': info['id'],
-            'field_wbddh_country': country_tids,
             'field_wbddh_release_date': ddh.util.date(info['metadata_created'].split('.')[0]),
             'field_wbddh_modified_date': ddh.util.date(info['metadata_modified'].split('.')[0]),
-            'field_ddh_external_contact_email': info['author_email'],
+            'field_ddh_external_contact_email': author_email,
             'field_wbddh_source': info['url'],
             'field_wbddh_publisher_name': info['author'],
             'field_wbddh_reference_system': info.get('ref_system',''),
@@ -273,6 +285,9 @@ for id in src_package_list:
             'field_wbddh_end_date': ddh.util.date(info.get('end_date')),
             'field_wbddh_time_periods': ddh.util.date(info.get('release_date')),
         })
+
+        if country_tids:
+            ds.update({'field_wbddh_country': country_tids})
 
         ddh.taxonomy.update(ds, {
             'field_wbddh_data_type': dataset_type,

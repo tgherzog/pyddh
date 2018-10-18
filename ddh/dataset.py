@@ -17,6 +17,7 @@ ddh_token = None
 ddh_protocol = 'https'
 
 debug = False
+safe_mode = True
 
 class Error(Exception):
     
@@ -55,7 +56,13 @@ def login(config, user=None, pswd=None):
     url = '{}://{}/api/dataset/user/login'.format(ddh_protocol, host)
 
     response = requests.post(url, json=body)
-    json = response.json()
+    try:
+        json = response.json()
+    except:
+        print 'Login response error'
+        print response.text
+        raise
+
     if type(json) is not dict:
         raise InitError('login access denied')
 
@@ -248,7 +255,7 @@ def update_dataset(nid, ds):
     debug_report('Update dataset - {}'.format(url), obj)
     response = requests.put(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
     try:
-        data = response.json()
+        data = safe_json(response)
         return data['nid']
     except:
         raise APIError('put', id, response.text)
@@ -287,7 +294,7 @@ def new_dataset(ds, id=None):
         debug_report('Resource Create - {}'.format(url), obj)
         response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
         try:
-            data = response.json()
+            data = safe_json(response)
             resource_references.append({'nid': data['nid'], 'title': obj['title']})
         except:
             raise APIError(e['type'], id, response.text)
@@ -297,10 +304,10 @@ def new_dataset(ds, id=None):
             url = 'https://{}/api/dataset/node/{}/attach_file'.format(ddh_host, data['nid'])
             response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, files=post_info)
             try:
-                data = response.json()
+                data = safe_json(response)
                 fid  = data[0]['fid']
             except:
-                raise APIError('upload', id, response.text)
+                raise APIError('upload to {}'.format(data['nid']), id, response.text)
 
     # step 2: create dataset with resources attached
     e = copy.deepcopy(ds)
@@ -315,7 +322,7 @@ def new_dataset(ds, id=None):
     debug_report('Dataset Create - {}'.format(url), obj)
     response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
     try:
-        data = response.json()
+        data = safe_json(response)
         dataset_node = data['nid']
     except:
         raise APIError(e['type'], id, response.text)
@@ -334,7 +341,7 @@ def new_dataset(ds, id=None):
         response = requests.put(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
         # print json.dumps(obj, indent=4)
         try:
-            data = response.json()
+            data = safe_json(response)
             nid =  data['nid']
         except:
             raise APIError('put', id, response.text)
@@ -356,7 +363,7 @@ def new_dataset(ds, id=None):
             try:
                 response = None
                 response = requests.put(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
-                data = response.json()
+                data = safe_json(response)
                 nid =  data['nid']
 
             except requests.exceptions.ConnectionError as err:
@@ -376,7 +383,7 @@ def new_dataset(ds, id=None):
             debug_report('Resource Attach - {} (single)'.format(url), obj)
             response = requests.put(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
             try:
-                data = response.json()
+                data = safe_json(response)
                 nid =  data['nid']
             except:
                 raise APIError('put', id, response.text)
@@ -390,7 +397,7 @@ def delete(node_id):
 
     response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json={})
     try:
-        result = response.json()
+        result = safe_json(response)
 
         # result will now be a string either 'success' or 'Invalid node Id'
         return result == 'success'
@@ -398,6 +405,17 @@ def delete(node_id):
     except:
         raise APIError('delete', node_id, response.text)
 
+
+def safe_json(response):
+    global safe_mode
+
+    if safe_mode:
+        # in safe mode, we assume that server responses are well formed
+        return response.json()
+    else:
+        # in non-safe mode, we try to remove bogus messages that result from bugs in the server code. These show up
+        # as HTML-formatted text added to the end of a JSON response
+        return json.loads(re.sub(r'<br />.+', '', response.text, 0, re.S))
 
 def debug_report(label, obj=None):
     global debug
