@@ -87,7 +87,13 @@ def login(host, user=None, pswd=None):
     url = '{}/api/dataset/user/login'.format(host)
 
     response = requests.post(url, json=body)
-    json = response.json()
+    try:
+        json = response.json()
+    except:
+        print 'Login response error'
+        print response.text
+        raise
+
     if type(json) is not dict:
         sys.stderr.write('login access denied\n')
 
