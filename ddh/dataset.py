@@ -151,8 +151,9 @@ def ds_template():
       'body': None,
       'type': 'dataset',
       'status': '1',
-      'workflow_status': 'published',
+      'moderation_next_state': 'published',
       'field_wbddh_dsttl_upi': None,
+      'field_wbddh_responsible': 'No',
       'resources': [],
     }
 
@@ -170,7 +171,7 @@ def rs_template():
         'title': None,
         'type': 'resource',
         'status': '1',
-        'workflow_status': 'published',
+        'moderation_next_state': 'published',
     }
 
     tax_fields = ['wbddh_resource_type', 'wbddh_data_class']
@@ -185,7 +186,7 @@ def _set_values(d, elem):
         if v is None:
             continue
 
-        if k in ['field_tags']:
+        if k in ['_field_tags']:
             # freetagging fields have a different format than other taxonomy fields
             if type(v) is list:
                 tags = v
@@ -194,12 +195,11 @@ def _set_values(d, elem):
 
             d[k] = {'und': { 'value_field': ' '.join(['"" {} ""'.format(i) for i in tags]) }}
                 
-        elif k != 'workflow_status' and taxonomy.is_tax(k):
-            if type(v) is list:
-                d[k] = {'und': v}
-            else:
-                d[k] = {'und': [v]}
-        elif k in ['body', 'field_wbddh_copyright', 'field_wbddh_type_of_license', 'field_wbddh_source', 'field_wbddh_publisher_name', 'field_wbddh_search_tags', 'field_ddh_external_contact_email', 'field_wbddh_depositor_notes', 'field_ddh_harvest_sys_id', 'field_wbddh_reference_system', 'field_related_links_and_publicat', 'field_external_metadata']:
+        elif k == 'field_tags' or taxonomy.is_tax(k):
+            if type(v) is not list:
+                v = [v]
+            d[k] = {'und': map(lambda x: {'tid': x}, v)}
+        elif k in ['body', 'field_wbddh_copyright', 'field_wbddh_type_of_license', 'field_wbddh_source', 'field_wbddh_publisher_name', 'field_wbddh_search_tags', 'field_ddh_external_contact_email', 'field_wbddh_depositor_notes', 'field_ddh_harvest_sys_id', 'field_wbddh_reference_system', 'field_related_links_and_publicat', 'field_external_metadata', 'field_wbddh_responsible']:
             if type(v) is str or type(v) is unicode:
                 d[k] = {'und': [{'value': v}]}
             else:
@@ -210,7 +210,15 @@ def _set_values(d, elem):
             else:
                 d[k] = {'und': [v]}
         elif k in ['field_wbddh_dsttl_upi', 'field_wbddh_collaborator_upi']:
-            d[k] = {'und': {'autocomplete_hidden_value': v}}
+            if type(v) is not list:
+                v = [v]
+
+            d[k] = {'und': map(lambda x: {'target_id': x}, v)}
+        elif k in ['og_group_ref', 'field_wbddh_dsttl_upi', 'field_wbddh_collaborator_upi']:
+            if type(v) is not list:
+                v = [v]
+
+            d[k] = {'und': map(lambda x: {'target_id': str(x)}, v)}
         elif k in ['field_wbddh_release_date', 'field_wbddh_modified_date', 'field_wbddh_start_date', 'field_wbddh_end_date']:
             d[k] = {'und': [{
                 'value': v.strftime('%Y-%m-%d %H:%M:%S'),
@@ -228,10 +236,9 @@ def _set_values(d, elem):
             d[k] = {'und': [{ 'value': str(int(time.mktime(v.timetuple()))) }]}
             d[k] = {'und': [{ 'value': 20010101 }]}
         elif k in ['field_wbddh_time_periods']:
-            d[k] = {'und': [{ 'value': str(int(time.mktime(v.timetuple()))), 'value2': str(int(time.mktime(v.timetuple()))) }]}
+            # note: this currently supports only 1 value in the field, but this could be easily improved
             d[k] = {'und': [{ 'value': v.strftime('%Y-%m-%d %H:%M:%S'), 'value2': v.strftime('%Y-%m-%d %H:%M:%S') }]}
-        elif k in ['og_group_ref']:
-            d[k] = {'und': {'target_id': v}}
+            d[k]['und'][0]['show_todate'] = 0
         else:
             d[k] = v
 
@@ -249,8 +256,8 @@ def update_dataset(nid, ds):
     obj = new_object(ds)
 
     # workflow status defaults to published if undefined 
-    if not 'workflow_status' in obj:
-        obj['workflow_status'] = 'published'
+    if not 'moderation_next_state' in obj:
+        obj['moderation_next_state'] = 'published'
 
     url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, nid)
     debug_report('Update dataset - {}'.format(url), obj)
@@ -277,7 +284,7 @@ def new_dataset(ds, id=None):
     #
     # Currently the API only works in 'posthoc2' mode
 
-    rsrc_approach = 'posthoc2'
+    rsrc_approach = 'posthoc'
 
     # step 1: create resources
     resource_references = []
@@ -331,11 +338,12 @@ def new_dataset(ds, id=None):
     # step 3: attach resources
     if len(resource_references) > 0 and rsrc_approach == 'posthoc':
         obj = {
-          'workflow_status': 'published',
+          'moderation_next_state': 'published',
           'field_resources': {'und': []}
         }
         for elem in resource_references:
-            obj['field_resources']['und'].append({'target_id': u'{} ({})'.format(elem['title'], elem['nid'])})
+            # obj['field_resources']['und'].append({'target_id': u'{} ({})'.format(elem['title'], elem['nid'])})
+            obj['field_resources']['und'].append({'target_id': u'{}'.format(elem['nid'])})
 
         url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, dataset_node)
         debug_report('Resource Attach - {} (multiple)'.format(url), obj)
@@ -349,7 +357,7 @@ def new_dataset(ds, id=None):
 
     if len(resource_references) > 0 and rsrc_approach == 'posthoc2':
         obj = {
-          'workflow_status': 'published',
+          'moderation_next_state': 'published',
           'field_resources': {'und': []}
         }
         for elem in resource_references:
@@ -377,7 +385,7 @@ def new_dataset(ds, id=None):
         url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, dataset_node)
         for elem in resource_references:
             obj = {
-              'workflow_status': 'published',
+              'moderation_next_state': 'published',
               'field_resources': {'und': [{ 'target_id': u'{} ({})'.format(elem['title'], elem['nid'])}] }
             }
 
