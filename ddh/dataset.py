@@ -115,6 +115,7 @@ def search(fields=[], filter={}, obj_type='dataset'):
         query_string = '&'.join([k + '=' + v for k,v in query.iteritems()])
 
         url = '{}://{}/search-service/search_api/datasets?{}'.format(ddh_protocol, ddh_host, query_string)
+        debug_report('Search - {}'.format(url))
 
         response = get(url)
         totalRecords = response['count']
@@ -243,7 +244,7 @@ def new_object(ds):
 
 def update_dataset(nid, ds):
 
-    global ddh_host, ddh_session_key, ddh_session_value, ddh_token
+    global ddh_host, ddh_session_key, ddh_session_value, ddh_token, ddh_protocol
 
     obj = new_object(ds)
 
@@ -251,7 +252,7 @@ def update_dataset(nid, ds):
     if not 'workflow_status' in obj:
         obj['workflow_status'] = 'published'
 
-    url = 'https://{}/api/dataset/node/{}'.format(ddh_host, nid)
+    url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, nid)
     debug_report('Update dataset - {}'.format(url), obj)
     response = requests.put(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
     try:
@@ -263,7 +264,7 @@ def update_dataset(nid, ds):
 
 def new_dataset(ds, id=None):
 
-    global ddh_host, ddh_session_key, ddh_session_value, ddh_token
+    global ddh_host, ddh_protocol, ddh_session_key, ddh_session_value, ddh_token
     
     if id is None:
         id = ds.get('field_ddh_harvest_sys_id', None)
@@ -290,7 +291,7 @@ def new_dataset(ds, id=None):
         obj = new_object(e)
         obj['field_resource_weight'] = {'und': [{'value': len(resource_references)}]}
 
-        url = 'https://{}/api/dataset/node'.format(ddh_host)
+        url = '{}://{}/api/dataset/node'.format(ddh_protocol, ddh_host)
         debug_report('Resource Create - {}'.format(url), obj)
         response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
         try:
@@ -301,7 +302,7 @@ def new_dataset(ds, id=None):
 
         # attach files
         if post_info is not None:
-            url = 'https://{}/api/dataset/node/{}/attach_file'.format(ddh_host, data['nid'])
+            url = '{}://{}/api/dataset/node/{}/attach_file'.format(ddh_protocol, ddh_host, data['nid'])
             response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, files=post_info)
             try:
                 data = safe_json(response)
@@ -313,7 +314,7 @@ def new_dataset(ds, id=None):
     e = copy.deepcopy(ds)
     del e['resources']
     obj = new_object(e)
-    url = 'https://{}/api/dataset/node'.format(ddh_host)
+    url = '{}://{}/api/dataset/node'.format(ddh_protocol, ddh_host)
     if len(resource_references) > 0 and rsrc_approach == 'concurrent':
         obj['field_resources'] = {'und': []}
         for elem in resource_references:
@@ -336,7 +337,7 @@ def new_dataset(ds, id=None):
         for elem in resource_references:
             obj['field_resources']['und'].append({'target_id': u'{} ({})'.format(elem['title'], elem['nid'])})
 
-        url = 'https://{}/api/dataset/node/{}'.format(ddh_host, dataset_node)
+        url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, dataset_node)
         debug_report('Resource Attach - {} (multiple)'.format(url), obj)
         response = requests.put(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
         # print json.dumps(obj, indent=4)
@@ -354,7 +355,7 @@ def new_dataset(ds, id=None):
         for elem in resource_references:
             obj['field_resources']['und'].append({'target_id': u'{} ({})'.format(elem['title'], elem['nid'])})
 
-        url = 'https://{}/api/dataset/node/{}'.format(ddh_host, dataset_node)
+        url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, dataset_node)
         debug_report('Resource Attach - {} (multiple2)'.format(url), obj)
         for i in range(len(resource_references)):
             # Unfortunately, errors or anomalies for these calls usually indicate that the resource was successfully
@@ -373,7 +374,7 @@ def new_dataset(ds, id=None):
                 print 'Warning: Error encountered attaching resources to {} - proceeding ({})'.format(dataset_node, i)
 
     elif len(resource_references) > 0 and rsrc_approach == 'posthoc-single':
-        url = 'https://{}/api/dataset/node/{}'.format(ddh_host, dataset_node)
+        url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, dataset_node)
         for elem in resource_references:
             obj = {
               'workflow_status': 'published',
@@ -391,9 +392,9 @@ def new_dataset(ds, id=None):
     return {'nid': dataset_node, 'resources': resource_references}
  
 def delete(node_id):
-    global ddh_host, ddh_session_key, ddh_session_value, ddh_token
+    global ddh_host, ddh_protocol, ddh_session_key, ddh_session_value, ddh_token
 
-    url = 'https://{}/api/dataset/node/{}/delete'.format(ddh_host, node_id)
+    url = '{}://{}/api/dataset/node/{}/delete'.format(ddh_protocol, ddh_host, node_id)
 
     response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json={})
     try:
