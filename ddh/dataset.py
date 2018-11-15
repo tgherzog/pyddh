@@ -284,9 +284,25 @@ def new_dataset(ds, id=None):
     #
     # Currently the API only works in 'posthoc2' mode
 
-    rsrc_approach = 'posthoc'
+    # 'dataset_first'  - datasets are created first. resources are appended by including the field_dataset_ref element
+    #                    which appends them to the dataset
+    rsrc_approach = 'dataset_first'
 
-    # step 1: create resources
+    # step B-1: create dataset with resources attached
+    e = copy.deepcopy(ds)
+    del e['resources']
+    obj = new_object(e)
+    url = '{}://{}/api/dataset/node'.format(ddh_protocol, ddh_host)
+
+    debug_report('Dataset Create - {}'.format(url), obj)
+    response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
+    try:
+        data = safe_json(response)
+        dataset_node = data['nid']
+    except:
+        raise APIError(e['type'], id, response.text)
+
+    # step B-2: create resources
     resource_references = []
     for elem in ds['resources']:
         e = copy.deepcopy(elem)
@@ -296,6 +312,7 @@ def new_dataset(ds, id=None):
             del e['upload']
 
         obj = new_object(e)
+        obj['field_dataset_ref'] = {'und': [{'target_id': dataset_node}]}
         obj['field_resource_weight'] = {'und': [{'value': len(resource_references)}]}
 
         url = '{}://{}/api/dataset/node'.format(ddh_protocol, ddh_host)
@@ -317,24 +334,7 @@ def new_dataset(ds, id=None):
             except:
                 raise APIError('upload to {}'.format(data['nid']), id, response.text)
 
-    # step 2: create dataset with resources attached
-    e = copy.deepcopy(ds)
-    del e['resources']
-    obj = new_object(e)
-    url = '{}://{}/api/dataset/node'.format(ddh_protocol, ddh_host)
-    if len(resource_references) > 0 and rsrc_approach == 'concurrent':
-        obj['field_resources'] = {'und': []}
-        for elem in resource_references:
-            obj['field_resources']['und'].append({'target_id': u'{} ({})'.format(elem['title'], elem['nid'])})
-
-    debug_report('Dataset Create - {}'.format(url), obj)
-    response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
-    try:
-        data = safe_json(response)
-        dataset_node = data['nid']
-    except:
-        raise APIError(e['type'], id, response.text)
-
+    # NB: on this branch the remaining code in this function is all legacy and never gets executed
     # step 3: attach resources
     if len(resource_references) > 0 and rsrc_approach == 'posthoc':
         obj = {
