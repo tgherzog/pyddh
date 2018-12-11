@@ -10,6 +10,8 @@ import yaml
 import re
 import copy
 
+# NB: disussion of new API format is here: http://jira.worldbank.org/jira/browse/DDH2-170
+
 ddh_host = None
 ddh_session_key = None
 ddh_session_value = None
@@ -112,7 +114,7 @@ def search(fields=[], filter={}, obj_type='dataset'):
         query['offset'] = str(recordsRead)
     
         # crude urlencode so as not to escape the brackets
-        query_string = '&'.join([k + '=' + v for k,v in query.iteritems()])
+        query_string = '&'.join([k + '=' + str(v) for k,v in query.iteritems()])
 
         url = '{}://{}/search-service/search_api/datasets?{}'.format(ddh_protocol, ddh_host, query_string)
         debug_report('Search - {}'.format(url))
@@ -214,11 +216,8 @@ def _set_values(d, elem):
                 v = [v]
 
             d[k] = {'und': map(lambda x: {'target_id': x}, v)}
-        elif k in ['og_group_ref', 'field_wbddh_dsttl_upi', 'field_wbddh_collaborator_upi']:
-            if type(v) is not list:
-                v = [v]
-
-            d[k] = {'und': map(lambda x: {'target_id': str(x)}, v)}
+        elif k in ['og_group_ref']:
+            d[k] = {'und': [{'target_id': v, 'field_mode': 'collections'}]}
         elif k in ['field_wbddh_release_date', 'field_wbddh_modified_date', 'field_wbddh_start_date', 'field_wbddh_end_date']:
             d[k] = {'und': [{
                 'value': v.strftime('%Y-%m-%d %H:%M:%S'),
