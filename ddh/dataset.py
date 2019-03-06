@@ -84,6 +84,23 @@ def load(config, user=None, pswd=None):
     token()
 
 def search(fields=[], filter={}, obj_type='dataset'):
+    """Query the search API
+
+    Parameters:
+        fields: an array of fields to return (in addition to 'title')
+
+        filter: a dict of field names and values. If the first (unnamed) argument
+                is a dict then it is assumed to be a filter
+
+        obj_type: type of object to search: 'dataset' or 'resource'
+
+    Returns:
+      a generator object for iterating over search results
+
+    Example:
+      for k,v in ddh.dataset.search({'field_wbddh_data_type': 'Time Series'}):
+        print v['title']
+    """
     global ddh_host, ddh_protocol
 
     # if 1st argument is a dict then it's the filter, not fields
@@ -197,7 +214,7 @@ def _set_values(d, elem):
 
             d[k] = {'und': { 'value_field': ' '.join(['"" {} ""'.format(i) for i in tags]) }}
                 
-        elif k == 'field_tags' or taxonomy.is_tax(k):
+        elif k != 'moderation_next_state' and (k == 'field_tags' or taxonomy.is_tax(k)):
             if type(v) is not list:
                 v = [v]
             d[k] = {'und': map(lambda x: {'tid': x}, v)}
@@ -286,6 +303,7 @@ def new_dataset(ds, id=None):
     # 'dataset_first'  - datasets are created first. resources are appended by including the field_dataset_ref element
     #                    which appends them to the dataset
     rsrc_approach = 'dataset_first'
+    workflow_state = ds.get('moderation_next_state', 'draft')
 
     # step B-1: create dataset with resources attached
     e = copy.deepcopy(ds)
@@ -337,7 +355,7 @@ def new_dataset(ds, id=None):
     # step 3: attach resources
     if len(resource_references) > 0 and rsrc_approach == 'posthoc':
         obj = {
-          'moderation_next_state': 'published',
+          'moderation_next_state': workflow_state,
           'field_resources': {'und': []}
         }
         for elem in resource_references:
@@ -356,7 +374,7 @@ def new_dataset(ds, id=None):
 
     if len(resource_references) > 0 and rsrc_approach == 'posthoc2':
         obj = {
-          'moderation_next_state': 'published',
+          'moderation_next_state': workflow_state,
           'field_resources': {'und': []}
         }
         for elem in resource_references:
@@ -384,7 +402,7 @@ def new_dataset(ds, id=None):
         url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, dataset_node)
         for elem in resource_references:
             obj = {
-              'moderation_next_state': 'published',
+              'moderation_next_state': workflow_state,
               'field_resources': {'und': [{ 'target_id': u'{} ({})'.format(elem['title'], elem['nid'])}] }
             }
 
