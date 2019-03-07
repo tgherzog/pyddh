@@ -84,7 +84,7 @@ def load(config, user=None, pswd=None):
     token()
 
 def search(fields=[], filter={}, obj_type='dataset'):
-    """Query the search API
+    '''Query the search API
 
     Parameters:
         fields: an array of fields to return (in addition to 'title')
@@ -100,7 +100,7 @@ def search(fields=[], filter={}, obj_type='dataset'):
     Example:
       for k,v in ddh.dataset.search({'field_wbddh_data_type': 'Time Series'}):
         print v['title']
-    """
+    '''
     global ddh_host, ddh_protocol
 
     # if 1st argument is a dict then it's the filter, not fields
@@ -171,6 +171,9 @@ def ds_template():
       'type': 'dataset',
       'status': '1',
       'moderation_next_state': 'published',
+      'field_wbddh_data_type': None,
+      'field_license_wbddh': None,
+      'field_exception_s_': None,
       'field_wbddh_dsttl_upi': None,
       'field_wbddh_responsible': 'No',
       'resources': [],
@@ -266,6 +269,16 @@ def new_object(ds):
     return obj
 
 def update_dataset(nid, ds):
+    '''Updates an existing dataset
+       
+       Parameters:
+         nid: the node ID of a dataset
+
+         ds: a (partial) dataset object
+
+       Returns:
+         the node ID of the modified dataset, if successful
+    '''
 
     global ddh_host, ddh_session_key, ddh_session_value, ddh_token, ddh_protocol
 
@@ -282,15 +295,80 @@ def update_dataset(nid, ds):
         data = safe_json(response)
         return data['nid']
     except:
-        raise APIError('put', id, response.text)
+        raise APIError('put', nid, response.text)
     
 
+def append_resource(nid, rsrc, weight=None):
+    '''Appends a new resource to an existing dataset
+
+       Parameters:
+         nid: the node ID of a dataset
+
+         rsrc: a resource object (returned by rs_template and modified)
+
+       Returns:
+         the node ID of the new resource, if successful
+    '''
+    global ddh_host, ddh_protocol, ddh_session_key, ddh_session_value, ddh_token
+
+    if type(nid) is dict:
+        id = nid['id']
+        nid = nid['nid']
+    else:
+        id = nid
+
+    e = copy.deepcopy(rsrc)
+    post_info = None
+    if e.get('upload'):
+        post_info = {'files[1]': open(e['upload'],'rb'), 'field_name': (None,'field_upload'), 'attach': (None,'1')}
+        del e['upload']
+
+    obj = new_object(e)
+    obj['field_dataset_ref'] = {'und': [{'target_id': nid}]}
+    if weight is not None:
+        obj['field_resource_weight'] = {'und': [{'value': weight}]}
+
+    url = '{}://{}/api/dataset/node'.format(ddh_protocol, ddh_host)
+    debug_report('Resource Create - {}'.format(url), obj)
+    response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
+    try:
+        data = safe_json(response)
+        rsrc_nid = data['nid']
+    except:
+        raise APIError('resource', id, response.text)
+
+    # attach files
+    if post_info is not None:
+        url = '{}://{}/api/dataset/node/{}/attach_file'.format(ddh_protocol, ddh_host, rsrc_nid)
+        response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, files=post_info)
+        try:
+            data = safe_json(response)
+            fid  = data[0]['fid']
+        except:
+            raise APIError('upload to {}'.format(rsrc_nid), id, response.text)
+
+    return rsrc_nid
+    
 def new_dataset(ds, id=None):
+    '''adds a new dataset and child resources
+
+       Parameters:
+
+         ds: a dataset object (returned by ds_template and modified)
+
+         id: an optional record identifier, included when exceptions are raised
+
+       Returns:
+         an object describing the new dataset, if successful
+
+    '''
 
     global ddh_host, ddh_protocol, ddh_session_key, ddh_session_value, ddh_token
-    
+
     if id is None:
         id = ds.get('field_ddh_harvest_sys_id', None)
+
+    new_ds = {'nid': None, 'id': id, 'resources': None}
 
     # this variable determines how the module tries to attach child resources to the dataset
     # 'concurrent'     - resource references are included with the initial dataset POST (most efficient)
@@ -315,41 +393,17 @@ def new_dataset(ds, id=None):
     response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
     try:
         data = safe_json(response)
-        dataset_node = data['nid']
+        new_ds['nid'] = data['nid']
     except:
         raise APIError(e['type'], id, response.text)
 
     # step B-2: create resources
     resource_references = []
     for elem in ds['resources']:
-        e = copy.deepcopy(elem)
-        post_info = None
-        if e.get('upload'):
-            post_info = {'files[1]': open(e['upload'],'rb'), 'field_name': (None,'field_upload'), 'attach': (None,'1')}
-            del e['upload']
+        rsrc_id = append_resource(new_ds, elem, len(resource_references))
+        resource_references.append({'nid': rsrc_id, 'title': elem['title']})
 
-        obj = new_object(e)
-        obj['field_dataset_ref'] = {'und': [{'target_id': dataset_node}]}
-        obj['field_resource_weight'] = {'und': [{'value': len(resource_references)}]}
-
-        url = '{}://{}/api/dataset/node'.format(ddh_protocol, ddh_host)
-        debug_report('Resource Create - {}'.format(url), obj)
-        response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
-        try:
-            data = safe_json(response)
-            resource_references.append({'nid': data['nid'], 'title': obj['title']})
-        except:
-            raise APIError(e['type'], id, response.text)
-
-        # attach files
-        if post_info is not None:
-            url = '{}://{}/api/dataset/node/{}/attach_file'.format(ddh_protocol, ddh_host, data['nid'])
-            response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, files=post_info)
-            try:
-                data = safe_json(response)
-                fid  = data[0]['fid']
-            except:
-                raise APIError('upload to {}'.format(data['nid']), id, response.text)
+    new_ds['resources'] = resource_references
 
     # NB: on this branch the remaining code in this function is all legacy and never gets executed
     # step 3: attach resources
@@ -362,7 +416,7 @@ def new_dataset(ds, id=None):
             # obj['field_resources']['und'].append({'target_id': u'{} ({})'.format(elem['title'], elem['nid'])})
             obj['field_resources']['und'].append({'target_id': u'{}'.format(elem['nid'])})
 
-        url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, dataset_node)
+        url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, new_ds['nid'])
         debug_report('Resource Attach - {} (multiple)'.format(url), obj)
         response = requests.put(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
         # print json.dumps(obj, indent=4)
@@ -380,7 +434,7 @@ def new_dataset(ds, id=None):
         for elem in resource_references:
             obj['field_resources']['und'].append({'target_id': u'{} ({})'.format(elem['title'], elem['nid'])})
 
-        url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, dataset_node)
+        url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, new_ds['nid'])
         debug_report('Resource Attach - {} (multiple2)'.format(url), obj)
         for i in range(len(resource_references)):
             # Unfortunately, errors or anomalies for these calls usually indicate that the resource was successfully
@@ -393,13 +447,13 @@ def new_dataset(ds, id=None):
                 nid =  data['nid']
 
             except requests.exceptions.ConnectionError as err:
-                print 'Warning: ConnectionError encountered attaching resources to {} - proceeding ({})'.format(dataset_node, i)
+                print 'Warning: ConnectionError encountered attaching resources to {} - proceeding ({})'.format(new_ds['nid'], i)
 
             except:
-                print 'Warning: Error encountered attaching resources to {} - proceeding ({})'.format(dataset_node, i)
+                print 'Warning: Error encountered attaching resources to {} - proceeding ({})'.format(new_ds['nid'], i)
 
     elif len(resource_references) > 0 and rsrc_approach == 'posthoc-single':
-        url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, dataset_node)
+        url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, new_ds['nid'])
         for elem in resource_references:
             obj = {
               'moderation_next_state': workflow_state,
@@ -414,7 +468,7 @@ def new_dataset(ds, id=None):
             except:
                 raise APIError('put', id, response.text)
 
-    return {'nid': dataset_node, 'resources': resource_references}
+    return new_ds
  
 def delete(node_id):
     global ddh_host, ddh_protocol, ddh_session_key, ddh_session_value, ddh_token
