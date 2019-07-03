@@ -110,7 +110,7 @@ def load(config):
             name = elem['machine_name']
 
         # field_tags has a different API syntax, so it doesn't get mapped to tids
-        if name == 'field_tags':
+        if False and name == 'field_tags':
             continue
 
         if ddh_terms.get(name) is None:

@@ -97,9 +97,12 @@ def search(fields=[], filter={}, obj_type='dataset'):
     Returns:
       a generator object for iterating over search results
 
-    Example:
-      for k,v in ddh.dataset.search({'field_wbddh_data_type': 'Time Series'}):
-        print v['title']
+    Examples:
+      for nid,dataset in ddh.dataset.search({'field_wbddh_data_type': 'Time Series'}):
+        print dataset['title']
+
+      for nid,dataset in ddh.dataset.search(['created'], {'field_wbddh_data_type': 'geospatial'}):
+        print nid, dataset['title'], dataset['created']
     '''
     global ddh_host, ddh_protocol
 
@@ -473,14 +476,13 @@ def new_dataset(ds, id=None):
 def delete(node_id):
     global ddh_host, ddh_protocol, ddh_session_key, ddh_session_value, ddh_token
 
-    url = '{}://{}/api/dataset/node/{}/delete'.format(ddh_protocol, ddh_host, node_id)
+    url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, node_id)
 
-    response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json={})
+    response = requests.delete(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json={})
     try:
         result = safe_json(response)
 
-        # result will now be a string either 'success' or 'Invalid node Id'
-        return result == 'success'
+        return 'OK' if result[0] == True else result[0]
 
     except:
         raise APIError('delete', node_id, response.text)
