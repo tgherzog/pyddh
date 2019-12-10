@@ -1,5 +1,7 @@
 
-import taxonomy
+import ddh
+import ddh.taxonomy as taxonomy
+
 import requests
 import copy
 import datetime
@@ -11,77 +13,6 @@ import re
 import copy
 
 # NB: disussion of new API format is here: http://jira.worldbank.org/jira/browse/DDH2-170
-
-ddh_host = None
-ddh_session_key = None
-ddh_session_value = None
-ddh_token = None
-ddh_protocol = 'https'
-
-debug = False
-safe_mode = True
-
-class Error(Exception):
-    
-    pass
-
-class InitError(Error):
-    
-    def __init(self, msg):
-        self.message = msg
-
-class APIError(Error):
-
-    def __init__(self, type, id, response):
-        self.type = type
-        self.url  = id
-        self.response = response
-
-class TaxonomyError(Error):
-    
-    def __init__(self, field, value):
-        self.field = field
-        self.value = value
-        self.message = '{} is undefined for {}'.format(value, field)
-
-def login(config, user=None, pswd=None):
-    global ddh_host, ddh_session_key, ddh_session_value, ddh_token, ddh_protocol
-
-    ddh_host = host = config['host']
-    ddh_protocol = config.get('protocol', ddh_protocol)
-
-    if not user or not pswd:
-        user = config['user']
-        pswd = config['password']
-
-    body = {'username': user, 'password': pswd}
-    url = '{}://{}/api/dataset/user/login'.format(ddh_protocol, host)
-
-    response = requests.post(url, json=body)
-    try:
-        json = response.json()
-    except:
-        print 'Login response error'
-        print response.text
-        raise
-
-    if type(json) is not dict:
-        raise InitError('login access denied')
-
-    ddh_session_key = json['session_name']
-    ddh_session_value = json['sessid']
-
-def token():
-    global ddh_host, ddh_session_key, ddh_session_value, ddh_token, ddh_protocol
-
-    url = '{}://{}/services/session/token'.format(ddh_protocol, ddh_host)
-    response = requests.post(url, cookies={ddh_session_key: ddh_session_value})
-    ddh_token = response.text
-
-def load(config, user=None, pswd=None):
-
-    login(config, user, pswd)
-    token()
 
 def search(fields=[], filter={}, obj_type='dataset'):
     '''Query the search API
@@ -104,7 +35,6 @@ def search(fields=[], filter={}, obj_type='dataset'):
       for nid,dataset in ddh.dataset.search(['created'], {'field_wbddh_data_type': 'geospatial'}):
         print nid, dataset['title'], dataset['created']
     '''
-    global ddh_host, ddh_protocol
 
     # if 1st argument is a dict then it's the filter, not fields
     if type(fields) is dict:
@@ -116,7 +46,7 @@ def search(fields=[], filter={}, obj_type='dataset'):
     query['type'] = obj_type
     for k,v in query.iteritems():
         if v == None:
-            raise TaxonomyError(k, filter[k])
+            raise ddh.TaxonomyError(k, filter[k])
 
     query = {'filter['+k+']':v for k,v in query.iteritems()}
 
@@ -136,8 +66,8 @@ def search(fields=[], filter={}, obj_type='dataset'):
         # crude urlencode so as not to escape the brackets
         query_string = '&'.join([k + '=' + str(v) for k,v in query.iteritems()])
 
-        url = '{}://{}/search-service/search_api/datasets?{}'.format(ddh_protocol, ddh_host, query_string)
-        debug_report('Search - {}'.format(url))
+        url = '{}://{}/search-service/search_api/datasets?{}'.format(ddh.protocol, ddh.host, query_string)
+        ddh.debug_report('Search - {}'.format(url))
 
         response = get(url)
         totalRecords = response['count']
@@ -148,13 +78,12 @@ def search(fields=[], filter={}, obj_type='dataset'):
 
 
 def get(url, obj_type='node'):
-    global ddh_host, ddh_session_key, ddh_session_value, ddh_token, ddh_protocol
 
     url = str(url)
     if re.match(r'^\d+$', url):
-        url = '{}://{}/api/dataset/{}/{}'.format(ddh_protocol, ddh_host, obj_type, url)
+        url = '{}://{}/api/dataset/{}/{}'.format(ddh.protocol, ddh.host, obj_type, url)
 
-    response = requests.get(url, cookies={ddh_session_key: ddh_session_value})
+    response = requests.get(url, cookies={ddh.session_key: ddh.session_value})
     try:
         result = response.json()
         if type(result) is not dict:
@@ -163,7 +92,7 @@ def get(url, obj_type='node'):
         return result
 
     except:
-        raise APIError('get', url, response.text)
+        raise ddh.APIError('get', url, response.text)
 
     
 def ds_template():
@@ -283,17 +212,15 @@ def update_dataset(nid, ds):
          the node ID of the modified dataset, if successful
     '''
 
-    global ddh_host, ddh_session_key, ddh_session_value, ddh_token, ddh_protocol
-
     obj = new_object(ds)
 
     # workflow status defaults to published if undefined 
     if not 'moderation_next_state' in obj:
         obj['moderation_next_state'] = 'published'
 
-    url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, nid)
+    url = '{}://{}/api/dataset/node/{}'.format(ddh.protocol, ddh.host, nid)
     debug_report('Update dataset - {}'.format(url), obj)
-    response = requests.put(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
+    response = requests.put(url, cookies={ddh.session_key: ddh.session_value}, headers={'X-CSRF-Token': ddh.token}, json=obj)
     try:
         data = safe_json(response)
         return data['nid']
@@ -312,8 +239,6 @@ def append_resource(nid, rsrc, weight=None):
        Returns:
          the node ID of the new resource, if successful
     '''
-    global ddh_host, ddh_protocol, ddh_session_key, ddh_session_value, ddh_token
-
     if type(nid) is dict:
         id = nid['id']
         nid = nid['nid']
@@ -331,9 +256,9 @@ def append_resource(nid, rsrc, weight=None):
     if weight is not None:
         obj['field_resource_weight'] = {'und': [{'value': weight}]}
 
-    url = '{}://{}/api/dataset/node'.format(ddh_protocol, ddh_host)
+    url = '{}://{}/api/dataset/node'.format(ddh.protocol, ddh.host)
     debug_report('Resource Create - {}'.format(url), obj)
-    response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
+    response = requests.post(url, cookies={ddh.session_key: ddh.session_value}, headers={'X-CSRF-Token': ddh.token}, json=obj)
     try:
         data = safe_json(response)
         rsrc_nid = data['nid']
@@ -342,8 +267,8 @@ def append_resource(nid, rsrc, weight=None):
 
     # attach files
     if post_info is not None:
-        url = '{}://{}/api/dataset/node/{}/attach_file'.format(ddh_protocol, ddh_host, rsrc_nid)
-        response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, files=post_info)
+        url = '{}://{}/api/dataset/node/{}/attach_file'.format(ddh.protocol, ddh.host, rsrc_nid)
+        response = requests.post(url, cookies={ddh.session_key: ddh.session_value}, headers={'X-CSRF-Token': ddh.token}, files=post_info)
         try:
             data = safe_json(response)
             fid  = data[0]['fid']
@@ -365,8 +290,6 @@ def new_dataset(ds, id=None):
          an object describing the new dataset, if successful
 
     '''
-
-    global ddh_host, ddh_protocol, ddh_session_key, ddh_session_value, ddh_token
 
     if id is None:
         id = ds.get('field_ddh_harvest_sys_id', None)
@@ -390,10 +313,10 @@ def new_dataset(ds, id=None):
     e = copy.deepcopy(ds)
     del e['resources']
     obj = new_object(e)
-    url = '{}://{}/api/dataset/node'.format(ddh_protocol, ddh_host)
+    url = '{}://{}/api/dataset/node'.format(ddh.protocol, ddh.host)
 
     debug_report('Dataset Create - {}'.format(url), obj)
-    response = requests.post(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
+    response = requests.post(url, cookies={ddh.session_key: ddh.session_value}, headers={'X-CSRF-Token': ddh.token}, json=obj)
     try:
         data = safe_json(response)
         new_ds['nid'] = data['nid']
@@ -419,9 +342,9 @@ def new_dataset(ds, id=None):
             # obj['field_resources']['und'].append({'target_id': u'{} ({})'.format(elem['title'], elem['nid'])})
             obj['field_resources']['und'].append({'target_id': u'{}'.format(elem['nid'])})
 
-        url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, new_ds['nid'])
+        url = '{}://{}/api/dataset/node/{}'.format(ddh.protocol, ddh.host, new_ds['nid'])
         debug_report('Resource Attach - {} (multiple)'.format(url), obj)
-        response = requests.put(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
+        response = requests.put(url, cookies={ddh.session_key: ddh.session_value}, headers={'X-CSRF-Token': ddh.token}, json=obj)
         # print json.dumps(obj, indent=4)
         try:
             data = safe_json(response)
@@ -437,7 +360,7 @@ def new_dataset(ds, id=None):
         for elem in resource_references:
             obj['field_resources']['und'].append({'target_id': u'{} ({})'.format(elem['title'], elem['nid'])})
 
-        url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, new_ds['nid'])
+        url = '{}://{}/api/dataset/node/{}'.format(ddh.protocol, ddh.host, new_ds['nid'])
         debug_report('Resource Attach - {} (multiple2)'.format(url), obj)
         for i in range(len(resource_references)):
             # Unfortunately, errors or anomalies for these calls usually indicate that the resource was successfully
@@ -445,7 +368,7 @@ def new_dataset(ds, id=None):
             # so we just continue on
             try:
                 response = None
-                response = requests.put(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
+                response = requests.put(url, cookies={ddh.session_key: ddh.session_value}, headers={'X-CSRF-Token': ddh.token}, json=obj)
                 data = safe_json(response)
                 nid =  data['nid']
 
@@ -456,7 +379,7 @@ def new_dataset(ds, id=None):
                 print 'Warning: Error encountered attaching resources to {} - proceeding ({})'.format(new_ds['nid'], i)
 
     elif len(resource_references) > 0 and rsrc_approach == 'posthoc-single':
-        url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, new_ds['nid'])
+        url = '{}://{}/api/dataset/node/{}'.format(ddh.protocol, ddh.host, new_ds['nid'])
         for elem in resource_references:
             obj = {
               'moderation_next_state': workflow_state,
@@ -464,7 +387,7 @@ def new_dataset(ds, id=None):
             }
 
             debug_report('Resource Attach - {} (single)'.format(url), obj)
-            response = requests.put(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json=obj)
+            response = requests.put(url, cookies={ddh.session_key: ddh.session_value}, headers={'X-CSRF-Token': ddh.token}, json=obj)
             try:
                 data = safe_json(response)
                 nid =  data['nid']
@@ -474,11 +397,10 @@ def new_dataset(ds, id=None):
     return new_ds
  
 def delete(node_id):
-    global ddh_host, ddh_protocol, ddh_session_key, ddh_session_value, ddh_token
 
-    url = '{}://{}/api/dataset/node/{}'.format(ddh_protocol, ddh_host, node_id)
+    url = '{}://{}/api/dataset/node/{}'.format(ddh.protocol, ddh.host, node_id)
 
-    response = requests.delete(url, cookies={ddh_session_key: ddh_session_value}, headers={'X-CSRF-Token': ddh_token}, json={})
+    response = requests.delete(url, cookies={ddh.session_key: ddh.session_value}, headers={'X-CSRF-Token': ddh.token}, json={})
     try:
         result = safe_json(response)
 
@@ -489,20 +411,11 @@ def delete(node_id):
 
 
 def safe_json(response):
-    global safe_mode
-
-    if safe_mode:
-        # in safe mode, we assume that server responses are well formed
+    if not ddh.hack_mode:
+        # in regular mode, we assume that server responses are well formed
         return response.json()
     else:
-        # in non-safe mode, we try to remove bogus messages that result from bugs in the server code. These show up
+        # in hack mode, we try to remove bogus messages that result from bugs in the server code. These show up
         # as HTML-formatted text added to the end of a JSON response
         return json.loads(re.sub(r'<br />.+', '', response.text, 0, re.S))
 
-def debug_report(label, obj=None):
-    global debug
-
-    if debug:
-        print label
-        if obj is not None:
-          print json.dumps(obj, indent=4)
