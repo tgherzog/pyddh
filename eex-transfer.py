@@ -4,10 +4,10 @@ transfer data from eex and load into DDH.
 
 Usage:
   eex-transfer.py [--debug] --summary
-  eex-transfer.py [--debug --overwrite] NAME
-  eex-transfer.py [--debug --overwrite] --all
-  eex-transfer.py [--debug] --from=FILE
-  eex-transfer.py [--debug] --test=FILE
+  eex-transfer.py [--debug --overwrite --validate] NAME
+  eex-transfer.py [--debug --overwrite --validate] --all
+  eex-transfer.py [--debug --validate] --from=FILE
+  eex-transfer.py [--debug --validate] --test=FILE
   eex-transfer.py [--debug] --postfix=FILE
 
 Options:
@@ -18,6 +18,7 @@ Options:
   --from=FILE         Load FILE as list of identifiers to process (one per line, # comments recognized)
   --test=FILE         Load FILE as a test JSON object instead of reading the energydata API
   --postfix=FILE      Attach URLs for files too large to load via API. FILE is a 2-column CSV with resource node IDs and filenames
+  --validate          Perform post-load validation on datasets and resources
 
 """
 
@@ -106,6 +107,7 @@ if config['--postfix']:
         for row in paths:
             row = row.strip()
             (nid,name) = row.split(',', 2)
+            print 'Updating {}'.format(nid)
             try:
                 ddh.dataset.update_dataset(nid, {'field_link_api': 'https://{}{}/{}'.format(target, config['postfix-subdir'], name)})
             except ddh.dataset.APIError as err:
@@ -303,11 +305,13 @@ for id in src_package_list:
             'title': r['name'],
             'body': r['description'],
             'field_format': ddh.taxonomy.get('field_format', format, True),
+            'field_ddh_harvest_sys_id': r['id'],
           })
 
           ddh.taxonomy.update(rs, {
             'field_wbddh_data_class': 'Public',
             'field_wbddh_resource_type': 'Download',
+            'field_ddh_harvest_src': config.get('harvest_src'),
           })
 
           if r.get('local_path'):
@@ -327,6 +331,29 @@ for id in src_package_list:
             for i in range(len(result['resources'])):
                 if info['resources'][i].get('large_file_url'):
                     print 'ATTACH: {}/{}'.format(result['resources'][i]['nid'], info['resources'][i]['local_path'])
+
+            if config['--validate']:
+                # validate to ensure all nodes and uploaded resources are accounted for
+                new_ds = ddh.dataset.get(result['nid'])
+                if new_ds is None:
+                    print 'Validation Error: dataset not found ({})'.format(result['nid'])
+                else:
+                    new_resources = new_ds.get('field_resources') or {'und': []}
+                    new_resource_list = {}
+                    for i in new_resources['und']:
+                        new_resource = ddh.dataset.get(i['target_id'])
+                        new_resource_id = new_resource['field_ddh_harvest_sys_id']['und'][0]['value']
+                        new_resource_list[new_resource_id] = new_resource
+
+                    for r in info.get('resources', []):
+                        if new_resource_list.get(r['id']) is None:
+                            print 'Validation Error: resource is missing ({},{})'.format(result['nid'], r['id'])
+                        elif r.get('local_path') and r.get('large_file_url') is None:
+                            new_resource = new_resource_list.get(r['id'])
+                            if not new_resource.get('field_upload') or not new_resource['field_upload']['und'][0].get('uri'):
+                                print 'Validation Error: file upload is missing ({},{})'.format(result['nid'], new_resource['nid'])
+
+
         except ddh.dataset.APIError as err:
             print 'Error creating dataset [{}]: {} ({})'.format(err.type, info['name'], info['id'])
             print err.response

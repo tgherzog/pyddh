@@ -3,6 +3,10 @@ import re
 from datetime import datetime
 
 def date(s):
+    '''Returns a datetime object for the given string
+
+    date() applies a range of known date patterns to parse the string
+    '''
 
     if not s:
         return None

@@ -55,7 +55,7 @@ session_key = ''
 session_val = ''
 session_token = ''
 
-host = config['--host'] or 'https://datacatalog.worldbank.org'
+host = config['--host'] or 'http://datacatalog.worldbank.org'
 
 i = urlparse(host)
 if not i.netloc and not i.path:
@@ -264,10 +264,12 @@ elif config['attach']:
 
 elif config['delete']:
     token = get_token()
-    url = '{}/api/dataset/node/{}/delete'.format(host, config['ID'])
+    # url = '{}/api/dataset/node/{}/delete'.format(host, config['ID'])
+    url = '{}/api/dataset/node/{}'.format(host, config['ID'])
     print "DELETE to {}".format(url)
 
-    response = requests.post(url, cookies={session_key: session_val}, headers={'X-CSRF-Token': token}, json={})
+    # response = requests.post(url, cookies={session_key: session_val}, headers={'X-CSRF-Token': token}, json={})
+    response = requests.delete(url, cookies={session_key: session_val}, headers={'X-CSRF-Token': token}, json={})
     print 'RESPONSE STATUS'
     print response.status_code
     print 'RESPONSE'
