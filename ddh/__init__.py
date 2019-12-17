@@ -1,6 +1,6 @@
-import taxonomy
-import dataset
-import util
+from . import taxonomy
+from . import dataset
+from . import util
 import os
 import yaml
 import requests
@@ -61,7 +61,7 @@ def load(host, user=None, pswd=None):
     path = os.path.join(os.getcwd(), 'config.yaml')
     with open(path, 'r') as fd:
         try:
-            config = yaml.load(fd)
+            config = yaml.safe_load(fd)
         except:
             raise ValueError('Incorrect yaml file format in {}'.format(path))
 
@@ -108,6 +108,6 @@ def debug_report(label, obj=None):
     global debug
 
     if debug:
-        print label
+        print(label)
         if obj is not None:
-          print json.dumps(obj, indent=4)
+          print(json.dumps(obj, indent=4))

@@ -29,7 +29,7 @@ def date(s):
         '\d{4}': '%Y',
     }
 
-    for k,v in templates.iteritems():
+    for k,v in templates.items():
         if re.search('^'+k+'$', s):
             return datetime.strptime(s, v)
 

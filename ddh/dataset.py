@@ -44,11 +44,11 @@ def search(fields=[], filter={}, obj_type='dataset'):
     query = copy.copy(filter) # shallow copy should suffice
     taxonomy.update(query, filter)
     query['type'] = obj_type
-    for k,v in query.iteritems():
+    for k,v in query.items():
         if v == None:
             raise ddh.TaxonomyError(k, filter[k])
 
-    query = {'filter['+k+']':v for k,v in query.iteritems()}
+    query = {'filter['+k+']':v for k,v in iter(query.items())}
 
     _fields = set(fields)
     _fields.update(['title'])
@@ -64,7 +64,7 @@ def search(fields=[], filter={}, obj_type='dataset'):
         query['offset'] = str(recordsRead)
     
         # crude urlencode so as not to escape the brackets
-        query_string = '&'.join([k + '=' + str(v) for k,v in query.iteritems()])
+        query_string = '&'.join([k + '=' + str(v) for k,v in query.items()])
 
         url = '{}://{}/search-service/search_api/datasets?{}'.format(ddh.protocol, ddh.host, query_string)
         ddh.debug_report('Search - {}'.format(url))
@@ -73,7 +73,7 @@ def search(fields=[], filter={}, obj_type='dataset'):
         totalRecords = response['count']
         if type(response['result']) is dict:
             recordsRead += len(response['result'])
-            for k,v in response['result'].iteritems():
+            for k,v in response['result'].items():
                 yield k,v
 
 
@@ -136,7 +136,7 @@ def rs_template():
 
 def _set_values(d, elem):
 
-    for k,v in elem.iteritems():
+    for k,v in elem.items():
         if v is None:
             continue
 
@@ -152,14 +152,14 @@ def _set_values(d, elem):
         elif k != 'moderation_next_state' and (k == 'field_tags' or taxonomy.is_tax(k)):
             if type(v) is not list:
                 v = [v]
-            d[k] = {'und': map(lambda x: {'tid': x}, v)}
+            d[k] = {'und': [{'tid': x} for x in v]}
         elif k in ['body', 'field_wbddh_copyright', 'field_wbddh_type_of_license', 'field_wbddh_source', 'field_wbddh_publisher_name', 'field_wbddh_search_tags', 'field_ddh_external_contact_email', 'field_wbddh_depositor_notes', 'field_ddh_harvest_sys_id', 'field_wbddh_reference_system', 'field_related_links_and_publicat', 'field_external_metadata', 'field_wbddh_responsible']:
-            if type(v) is str or type(v) is unicode:
+            if type(v) is str:
                 d[k] = {'und': [{'value': v}]}
             else:
                 d[k] = {'und': [v]}
         elif k in ['field_link_api']:
-            if type(v) is str or type(v) is unicode:
+            if type(v) is str:
                 d[k] = {'und': [{'url': v}]}
             else:
                 d[k] = {'und': [v]}
@@ -167,7 +167,7 @@ def _set_values(d, elem):
             if type(v) is not list:
                 v = [v]
 
-            d[k] = {'und': map(lambda x: {'target_id': x}, v)}
+            d[k] = {'und': [{'target_id': x} for x in v]}
         elif k in ['og_group_ref']:
             d[k] = {'und': [{'target_id': v, 'field_mode': 'collections'}]}
         elif k in ['field_wbddh_release_date', 'field_wbddh_modified_date', 'field_wbddh_start_date', 'field_wbddh_end_date']:
@@ -340,7 +340,7 @@ def new_dataset(ds, id=None):
         }
         for elem in resource_references:
             # obj['field_resources']['und'].append({'target_id': u'{} ({})'.format(elem['title'], elem['nid'])})
-            obj['field_resources']['und'].append({'target_id': u'{}'.format(elem['nid'])})
+            obj['field_resources']['und'].append({'target_id': '{}'.format(elem['nid'])})
 
         url = '{}://{}/api/dataset/node/{}'.format(ddh.protocol, ddh.host, new_ds['nid'])
         debug_report('Resource Attach - {} (multiple)'.format(url), obj)
@@ -358,7 +358,7 @@ def new_dataset(ds, id=None):
           'field_resources': {'und': []}
         }
         for elem in resource_references:
-            obj['field_resources']['und'].append({'target_id': u'{} ({})'.format(elem['title'], elem['nid'])})
+            obj['field_resources']['und'].append({'target_id': '{} ({})'.format(elem['title'], elem['nid'])})
 
         url = '{}://{}/api/dataset/node/{}'.format(ddh.protocol, ddh.host, new_ds['nid'])
         debug_report('Resource Attach - {} (multiple2)'.format(url), obj)
@@ -373,17 +373,17 @@ def new_dataset(ds, id=None):
                 nid =  data['nid']
 
             except requests.exceptions.ConnectionError as err:
-                print 'Warning: ConnectionError encountered attaching resources to {} - proceeding ({})'.format(new_ds['nid'], i)
+                print('Warning: ConnectionError encountered attaching resources to {} - proceeding ({})'.format(new_ds['nid'], i))
 
             except:
-                print 'Warning: Error encountered attaching resources to {} - proceeding ({})'.format(new_ds['nid'], i)
+                print('Warning: Error encountered attaching resources to {} - proceeding ({})'.format(new_ds['nid'], i))
 
     elif len(resource_references) > 0 and rsrc_approach == 'posthoc-single':
         url = '{}://{}/api/dataset/node/{}'.format(ddh.protocol, ddh.host, new_ds['nid'])
         for elem in resource_references:
             obj = {
               'moderation_next_state': workflow_state,
-              'field_resources': {'und': [{ 'target_id': u'{} ({})'.format(elem['title'], elem['nid'])}] }
+              'field_resources': {'und': [{ 'target_id': '{} ({})'.format(elem['title'], elem['nid'])}] }
             }
 
             debug_report('Resource Attach - {} (single)'.format(url), obj)
