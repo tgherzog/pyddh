@@ -58,7 +58,11 @@ def load(host, user=None, pswd=None):
 
     globals()['host'] = host
 
-    path = os.path.join(os.getcwd(), 'config.yaml')
+    possible_paths = [os.path.join(os.path.expanduser('~'), '.ddh_config.yaml'), os.path.join(os.getcwd(), 'config.yaml')]
+    for path in possible_paths:
+        if os.path.isfile(path):
+            break
+
     with open(path, 'r') as fd:
         try:
             config = yaml.safe_load(fd)
